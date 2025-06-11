@@ -1,0 +1,16 @@
+# Dipendenze per 5bands_labeler
+# Labeler per immagini multispettrali 5 bande
+
+# Elaborazione immagini
+Pillow>=9.0.0
+numpy>=1.21.0
+tifffile>=2021.11.2
+
+# Supporto compressione TIFF
+imagecodecs>=2021.11.20
+
+# GUI (tkinter è incluso con Python)
+# tkinter - incluso nella distribuzione standard Python
+
+# Utilità sistema
+pathlib2>=2.3.6; python_version < '3.4'

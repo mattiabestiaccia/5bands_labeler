@@ -1,0 +1,24 @@
+{
+  "project_name": "Test Project",
+  "safe_name": "test_proj",
+  "description": "Progetto labeling multispettrale di test",
+  "created_date": "2024-01-01T12:00:00",
+  "last_modified": "2024-01-01T12:00:00",
+  "version": "1.0",
+  "gui_type": "labeling",
+  "structure": {
+    "originals": "Immagini originali caricate",
+    "crops": "Crop salvati dalla GUI"
+  },
+  "source_info": {
+    "type": "test",
+    "count": 0,
+    "paths": []
+  },
+  "crops": [],
+  "statistics": {
+    "total_crops": 0,
+    "total_images_processed": 0
+  },
+  "last_accessed": "2025-06-11T13:11:35.179415"
+}
