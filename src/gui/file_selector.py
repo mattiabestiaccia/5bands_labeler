@@ -127,9 +127,9 @@ class FileSelector:
             # Espandi la cartella esistente in file individuali
             if len(self.selected_paths) == 1 and os.path.isdir(self.selected_paths[0]):
                 folder_path = self.selected_paths[0]
-                tiff_files = self._find_tiff_files(folder_path)
+                image_files = self._find_supported_image_files(folder_path)
                 # Sostituisci la cartella con i suoi file
-                self.selected_paths = tiff_files[:]
+                self.selected_paths = image_files[:]
 
             # Aggiungi i nuovi file evitando duplicati
             for path in new_paths:
@@ -143,10 +143,10 @@ class FileSelector:
             # Caso: file esistenti + nuova cartella
             # Espandi la nuova cartella e aggiungi i suoi file
             folder_path = new_paths[0]
-            tiff_files = self._find_tiff_files(folder_path)
+            image_files = self._find_supported_image_files(folder_path)
 
             # Aggiungi i file della cartella evitando duplicati
-            for file_path in tiff_files:
+            for file_path in image_files:
                 if file_path not in self.selected_paths:
                     self.selected_paths.append(file_path)
 
@@ -161,11 +161,11 @@ class FileSelector:
             # Espandi cartella esistente
             if len(self.selected_paths) == 1 and os.path.isdir(self.selected_paths[0]):
                 folder_path = self.selected_paths[0]
-                all_files.extend(self._find_tiff_files(folder_path))
+                all_files.extend(self._find_supported_image_files(folder_path))
 
             # Espandi nuova cartella
             folder_path = new_paths[0]
-            new_files = self._find_tiff_files(folder_path)
+            new_files = self._find_supported_image_files(folder_path)
             for file_path in new_files:
                 if file_path not in all_files:
                     all_files.append(file_path)
@@ -184,11 +184,13 @@ class FileSelector:
                 self.selection_type = "multiple_files"
 
     def select_single_file(self):
-        """Seleziona un singolo file TIFF"""
+        """Seleziona un singolo file immagine"""
         file_path = filedialog.askopenfilename(
-            title="Seleziona Immagine TIFF per Labeling",
+            title="Seleziona Immagine per Labeling",
             filetypes=[
-                ("File TIFF", "*.tif *.tiff"),
+                ("File TIFF Multispettrali", "*.tif *.tiff *.TIF *.TIFF"),
+                ("Immagini RGB", "*.png *.jpg *.jpeg *.PNG *.JPG *.JPEG"),
+                ("Tutte le immagini", "*.tif *.tiff *.TIF *.TIFF *.png *.jpg *.jpeg *.PNG *.JPG *.JPEG"),
                 ("Tutti i file", "*.*")
             ]
         )
@@ -197,13 +199,15 @@ class FileSelector:
             self._add_paths_to_selection([file_path], "single_file")
             self.update_preview()
             self._notify_change()
-    
+
     def select_multiple_files(self):
-        """Seleziona file multipli TIFF"""
+        """Seleziona file multipli immagine"""
         file_paths = filedialog.askopenfilenames(
-            title="Seleziona Immagini TIFF per Labeling",
+            title="Seleziona Immagini per Labeling",
             filetypes=[
-                ("File TIFF", "*.tif *.tiff"),
+                ("File TIFF Multispettrali", "*.tif *.tiff *.TIF *.TIFF"),
+                ("Immagini RGB", "*.png *.jpg *.jpeg *.PNG *.JPG *.JPEG"),
+                ("Tutte le immagini", "*.tif *.tiff *.TIF *.TIFF *.png *.jpg *.jpeg *.PNG *.JPG *.JPEG"),
                 ("Tutti i file", "*.*")
             ]
         )
@@ -220,34 +224,51 @@ class FileSelector:
         )
 
         if folder_path:
-            # Verifica che la cartella contenga file TIFF
-            tiff_files = self._find_tiff_files(folder_path)
-            if not tiff_files:
+            # Verifica che la cartella contenga file immagine supportati
+            image_files = self._find_supported_image_files(folder_path)
+            if not image_files:
                 messagebox.showwarning(
                     "Cartella Vuota",
-                    "La cartella selezionata non contiene file TIFF."
+                    "La cartella selezionata non contiene file immagine supportati."
                 )
                 return
 
             self._add_paths_to_selection([folder_path], "folder")
             self.update_preview()
             self._notify_change()
-    
+
     def clear_selection(self):
         """Pulisce la selezione corrente"""
         self.selected_paths = []
         self.selection_type = "none"
         self.update_preview()
         self._notify_change()
-    
+
+    def _find_supported_image_files(self, folder_path: str) -> List[str]:
+        """Trova file immagine supportati in una cartella"""
+        image_files = []
+        folder = Path(folder_path)
+
+        # Supporta TIFF multispettrali e immagini RGB standard (case insensitive)
+        patterns = [
+            "*.tif", "*.tiff", "*.TIF", "*.TIFF",
+            "*.png", "*.PNG",
+            "*.jpg", "*.JPG", "*.jpeg", "*.JPEG"
+        ]
+
+        for pattern in patterns:
+            image_files.extend(folder.glob(pattern))
+
+        return [str(f) for f in sorted(image_files)]
+
     def _find_tiff_files(self, folder_path: str) -> List[str]:
-        """Trova file TIFF in una cartella"""
+        """Trova file TIFF in una cartella (retrocompatibilità)"""
         tiff_files = []
         folder = Path(folder_path)
-        
+
         for pattern in ["*.tif", "*.tiff", "*.TIF", "*.TIFF"]:
             tiff_files.extend(folder.glob(pattern))
-        
+
         return [str(f) for f in sorted(tiff_files)]
     
     def update_preview(self):
@@ -280,16 +301,16 @@ class FileSelector:
             # Gestisce il caso di una singola cartella
             if len(self.selected_paths) == 1 and os.path.isdir(self.selected_paths[0]):
                 folder_path = self.selected_paths[0]
-                tiff_files = self._find_tiff_files(folder_path)
+                image_files = self._find_supported_image_files(folder_path)
                 self.info_label.config(
-                    text=f"Cartella: {os.path.basename(folder_path)} ({len(tiff_files)} file TIFF)",
+                    text=f"Cartella: {os.path.basename(folder_path)} ({len(image_files)} file immagine)",
                     foreground="purple"
                 )
-                for file_path in tiff_files[:20]:  # Mostra max 20 file
+                for file_path in image_files[:20]:  # Mostra max 20 file
                     self.files_listbox.insert(tk.END, os.path.basename(file_path))
 
-                if len(tiff_files) > 20:
-                    self.files_listbox.insert(tk.END, f"... e altri {len(tiff_files) - 20} file")
+                if len(image_files) > 20:
+                    self.files_listbox.insert(tk.END, f"... e altri {len(image_files) - 20} file")
             else:
                 # Caso inconsistente: selection_type è "folder" ma selected_paths contiene file
                 # Questo può succedere durante il merge - tratta come multiple_files
@@ -327,9 +348,9 @@ class FileSelector:
             # Gestisce cartella singola
             if len(self.selected_paths) == 1 and os.path.isdir(self.selected_paths[0]):
                 folder_path = self.selected_paths[0]
-                tiff_files = self._find_tiff_files(folder_path)
-                if index < len(tiff_files):
-                    file_path = tiff_files[index]
+                image_files = self._find_supported_image_files(folder_path)
+                if index < len(image_files):
+                    file_path = image_files[index]
                 else:
                     return
             else:

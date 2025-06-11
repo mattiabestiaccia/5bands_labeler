@@ -37,6 +37,8 @@ class CoordinateViewer:
         self.current_band = 0
         self.view_mode = "bands"
         self.project_crops_dir = None
+        self.image_type = None  # 'multispectral' o 'rgb'
+        self.zoom_level = 1.0  # Livello di zoom corrente
         
         # Coordinate selezionate
         self.selected_coordinates = None  # (x, y) nelle coordinate originali
@@ -53,14 +55,21 @@ class CoordinateViewer:
             "Banda 5 - Near-IR (840nm)"
         ]
         
-        # Modalità di visualizzazione
-        self.view_modes = {
+        # Modalità di visualizzazione (aggiornate dinamicamente in base al tipo immagine)
+        self.view_modes_multispectral = {
             "bands": "Bande Singole",
             "rgb": "RGB Naturale (3,2,1)",
             "false_color": "False Color IR (5,3,2)",
             "red_edge": "Red Edge Enhanced (4,3,2)",
             "ndvi_like": "NDVI-like (5,4,3)"
         }
+
+        self.view_modes_rgb = {
+            "rgb": "RGB Colori",
+            "grayscale": "Bianco e Nero"
+        }
+
+        self.view_modes = self.view_modes_multispectral  # Default
         
         # Variabili per display
         self.display_image = None
@@ -119,7 +128,16 @@ class CoordinateViewer:
         self.coord_label.pack()
         
         ttk.Button(coord_frame, text="🗑️ Pulisci", command=self.clear_coordinates).pack(pady=(2, 0))
-        
+
+        # Controlli zoom
+        zoom_frame = ttk.LabelFrame(controls_frame, text="Zoom", padding=5)
+        zoom_frame.pack(side="left", padx=(0, 10))
+
+        ttk.Button(zoom_frame, text="-", command=self.zoom_out, width=3).pack(side="left")
+        self.zoom_label = ttk.Label(zoom_frame, text="100%", width=6)
+        self.zoom_label.pack(side="left", padx=5)
+        ttk.Button(zoom_frame, text="+", command=self.zoom_in, width=3).pack(side="left")
+
         # Bottoni azione
         action_frame = ttk.Frame(controls_frame)
         action_frame.pack(side="right")
@@ -144,20 +162,33 @@ class CoordinateViewer:
         
         # Canvas per immagine
         self.canvas = tk.Canvas(image_frame, bg="white")
-        
+
         # Scrollbars
         v_scrollbar = ttk.Scrollbar(image_frame, orient="vertical", command=self.canvas.yview)
         h_scrollbar = ttk.Scrollbar(image_frame, orient="horizontal", command=self.canvas.xview)
-        
+
         self.canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-        
+
         # Pack scrollbars e canvas
         v_scrollbar.pack(side="right", fill="y")
         h_scrollbar.pack(side="bottom", fill="x")
         self.canvas.pack(side="left", fill="both", expand=True)
-        
+
         # Bind click del mouse
         self.canvas.bind("<Button-1>", self.on_canvas_click)
+
+        # Bind eventi zoom
+        self.canvas.bind("<Control-MouseWheel>", self.on_mouse_wheel)
+        self.canvas.bind("<Control-Button-4>", self.on_mouse_wheel)  # Linux
+        self.canvas.bind("<Control-Button-5>", self.on_mouse_wheel)  # Linux
+
+        # Focus per eventi tastiera
+        self.canvas.focus_set()
+        self.canvas.bind("<Control-plus>", lambda e: self.zoom_in())
+        self.canvas.bind("<Control-equal>", lambda e: self.zoom_in())  # + senza shift
+        self.canvas.bind("<Control-minus>", lambda e: self.zoom_out())
+        self.canvas.bind("<Control-KP_Add>", lambda e: self.zoom_in())  # + numpad
+        self.canvas.bind("<Control-KP_Subtract>", lambda e: self.zoom_out())  # - numpad
         
         # Messaggio iniziale
         self.canvas.create_text(400, 300, text="Nessuna immagine caricata\nClicca per selezionare coordinate",
@@ -192,9 +223,11 @@ class CoordinateViewer:
     def load_image_dialog(self):
         """Apre dialog per caricare un'immagine"""
         file_path = filedialog.askopenfilename(
-            title="Carica Immagine TIFF per Labeling",
+            title="Carica Immagine per Labeling",
             filetypes=[
-                ("File TIFF", "*.tif *.tiff"),
+                ("File TIFF Multispettrali", "*.tif *.tiff *.TIF *.TIFF"),
+                ("Immagini RGB", "*.png *.jpg *.jpeg *.PNG *.JPG *.JPEG"),
+                ("Tutte le immagini", "*.tif *.tiff *.TIF *.TIFF *.png *.jpg *.jpeg *.PNG *.JPG *.JPEG"),
                 ("Tutti i file", "*.*")
             ]
         )
@@ -204,46 +237,94 @@ class CoordinateViewer:
 
     def load_image(self, file_path: str) -> bool:
         """
-        Carica un'immagine multispettrale
-        
+        Carica un'immagine (multispettrale o RGB)
+
         Args:
-            file_path: Percorso del file TIFF
-            
+            file_path: Percorso del file immagine
+
         Returns:
             True se caricamento riuscito
         """
         try:
-            # Carica immagine
-            self.bands_data = tifffile.imread(file_path)
+            # Importa qui per evitare import circolari
+            try:
+                from ..utils.image_utils import ImageUtils
+            except ImportError:
+                # Fallback per import assoluto
+                import sys
+                from pathlib import Path
+                sys.path.insert(0, str(Path(__file__).parent.parent))
+                from utils.image_utils import ImageUtils
+
+            # Carica immagine usando la nuova funzione
+            result = ImageUtils.load_image(file_path)
+            if result is None:
+                messagebox.showerror("Errore", "Impossibile caricare l'immagine")
+                return False
+
+            self.bands_data, self.image_type = result
             self.current_file = file_path
-            
+
             # Verifica formato
             if len(self.bands_data.shape) != 3:
-                messagebox.showerror("Errore", "Il file deve essere un TIFF multibanda")
+                messagebox.showerror("Errore", "Formato immagine non supportato")
                 return False
-            
-            if self.bands_data.shape[0] != 5:
-                messagebox.showwarning("Attenzione", 
-                    f"Immagine con {self.bands_data.shape[0]} bande (attese 5)")
-            
-            # Reset visualizzazione
+
+            # Aggiorna modalità di visualizzazione in base al tipo immagine
+            self._update_view_modes_for_image_type()
+
+            # Reset visualizzazione con modalità predefinita appropriata
             self.current_band = 0
-            self.view_mode = "bands"
-            self.mode_var.set(self.view_modes["bands"])
+            self.zoom_level = 1.0
+            self._set_default_view_mode()
             self.clear_coordinates()
-            
+
             # Abilita controlli
             self.set_controls_enabled(True)
-            
+
             # Aggiorna visualizzazione
             self.update_display()
-            
+            self.update_zoom_label()
+
             return True
-            
+
         except Exception as e:
-            messagebox.showerror("Errore Caricamento", f"Impossibile caricare l'immagine:\n{e}")
+            error_msg = f"Impossibile caricare l'immagine:\n{str(e)}"
+            print(f"[DEBUG] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Errore Caricamento", error_msg)
             return False
-    
+
+    def _update_view_modes_for_image_type(self):
+        """Aggiorna le modalità di visualizzazione in base al tipo di immagine"""
+        if self.image_type == 'rgb':
+            self.view_modes = self.view_modes_rgb
+        else:
+            self.view_modes = self.view_modes_multispectral
+
+        # Aggiorna dropdown
+        self.mode_dropdown['values'] = list(self.view_modes.values())
+
+    def _set_default_view_mode(self):
+        """Imposta la modalità di visualizzazione predefinita"""
+        if self.image_type == 'rgb':
+            # Per immagini RGB, predefinita è RGB
+            self.view_mode = "rgb"
+            self.mode_var.set(self.view_modes["rgb"])
+        elif self.image_type == 'multispectral':
+            # Per multispettrali, prova RGB se ha almeno 3 bande, altrimenti bande singole
+            if self.bands_data.shape[0] >= 3:
+                self.view_mode = "rgb"
+                self.mode_var.set(self.view_modes["rgb"])
+            else:
+                self.view_mode = "bands"
+                self.mode_var.set(self.view_modes["bands"])
+        else:
+            # Fallback
+            self.view_mode = "bands"
+            self.mode_var.set(self.view_modes["bands"])
+
     def set_controls_enabled(self, enabled: bool):
         """Abilita/disabilita controlli"""
         state = "normal" if enabled else "disabled"
@@ -269,9 +350,49 @@ class CoordinateViewer:
         self.update_band_controls_visibility()
         self.update_display()
 
+    def zoom_in(self):
+        """Aumenta lo zoom"""
+        if self.bands_data is None:
+            return
+
+        self.zoom_level = min(self.zoom_level * 1.2, 5.0)  # Max 5x
+        self.update_display()
+        self.update_zoom_label()
+
+    def zoom_out(self):
+        """Diminuisce lo zoom"""
+        if self.bands_data is None:
+            return
+
+        self.zoom_level = max(self.zoom_level / 1.2, 0.1)  # Min 0.1x
+        self.update_display()
+        self.update_zoom_label()
+
+    def on_mouse_wheel(self, event):
+        """Gestisce zoom con mouse wheel + Ctrl"""
+        if self.bands_data is None:
+            return
+
+        # Verifica che il mouse sia sopra il canvas
+        if event.widget != self.canvas:
+            return
+
+        if event.delta > 0 or event.num == 4:  # Scroll up
+            self.zoom_in()
+        elif event.delta < 0 or event.num == 5:  # Scroll down
+            self.zoom_out()
+
+    def update_zoom_label(self):
+        """Aggiorna l'etichetta del livello di zoom"""
+        zoom_percent = int(self.zoom_level * 100)
+        self.zoom_label.config(text=f"{zoom_percent}%")
+
     def update_band_controls_visibility(self):
-        """Mostra/nasconde controlli banda in base alla modalità"""
-        if self.view_mode == "bands":
+        """Mostra/nasconde controlli banda in base alla modalità e tipo immagine"""
+        # I controlli banda sono visibili solo per immagini multispettrali in modalità bands
+        show_band_controls = (self.image_type == 'multispectral' and self.view_mode == "bands")
+
+        if show_band_controls:
             # Abilita controlli banda
             for child in self.band_frame.winfo_children():
                 if isinstance(child, ttk.Button):
@@ -471,13 +592,13 @@ class CoordinateViewer:
                 return
 
             # Estrai il crop dai dati
-            if self.view_mode == "bands":
-                # Singola banda in grayscale
+            if self.view_mode == "bands" and self.image_type == 'multispectral':
+                # Singola banda in grayscale per immagini multispettrali
                 crop_data = self.bands_data[self.current_band, y1:y2, x1:x2]
                 normalized = self._normalize_band(crop_data)
                 crop_image = Image.fromarray((normalized * 255).astype(np.uint8), mode='L')
             else:
-                # Composito RGB
+                # Composito RGB o altre modalità
                 crop_image = self._create_crop_composite(x1, y1, x2, y2)
 
             if crop_image:
@@ -507,9 +628,38 @@ class CoordinateViewer:
         """Crea composito RGB per il crop"""
         try:
             if self.view_mode == "rgb":
-                red = self._normalize_band(self.bands_data[2, y1:y2, x1:x2])
-                green = self._normalize_band(self.bands_data[1, y1:y2, x1:x2])
-                blue = self._normalize_band(self.bands_data[0, y1:y2, x1:x2])
+                if self.image_type == 'rgb':
+                    # Per immagini RGB standard
+                    crop_data = self.bands_data[:, y1:y2, x1:x2]
+                    rgb_array = np.transpose(crop_data, (1, 2, 0))
+
+                    # Normalizza se necessario
+                    if rgb_array.max() <= 1.0:
+                        rgb_array = (rgb_array * 255).astype(np.uint8)
+                    else:
+                        rgb_array = rgb_array.astype(np.uint8)
+
+                    return Image.fromarray(rgb_array, mode='RGB')
+                else:
+                    # Per immagini multispettrali RGB (3,2,1)
+                    red = self._normalize_band(self.bands_data[2, y1:y2, x1:x2])
+                    green = self._normalize_band(self.bands_data[1, y1:y2, x1:x2])
+                    blue = self._normalize_band(self.bands_data[0, y1:y2, x1:x2])
+            elif self.view_mode == "grayscale":
+                # Modalità bianco e nero per immagini RGB
+                crop_data = self.bands_data[:, y1:y2, x1:x2]
+                rgb_array = np.transpose(crop_data, (1, 2, 0))
+
+                # Normalizza se necessario
+                if rgb_array.max() <= 1.0:
+                    rgb_array = rgb_array * 255
+
+                # Conversione a grayscale
+                gray_array = (0.299 * rgb_array[:, :, 0] +
+                             0.587 * rgb_array[:, :, 1] +
+                             0.114 * rgb_array[:, :, 2]).astype(np.uint8)
+
+                return Image.fromarray(gray_array, mode='L')
             elif self.view_mode == "false_color":
                 red = self._normalize_band(self.bands_data[4, y1:y2, x1:x2])
                 green = self._normalize_band(self.bands_data[2, y1:y2, x1:x2])
@@ -528,9 +678,11 @@ class CoordinateViewer:
                 normalized = self._normalize_band(band_data)
                 return Image.fromarray((normalized * 255).astype(np.uint8), mode='L')
 
-            rgb_array = np.stack([red, green, blue], axis=2)
-            img_array = (rgb_array * 255).astype(np.uint8)
-            return Image.fromarray(img_array, mode='RGB')
+            # Per modalità multispettrali
+            if self.view_mode in ["false_color", "red_edge", "ndvi_like"]:
+                rgb_array = np.stack([red, green, blue], axis=2)
+                img_array = (rgb_array * 255).astype(np.uint8)
+                return Image.fromarray(img_array, mode='RGB')
 
         except Exception as e:
             print(f"Errore creazione composito crop: {e}")
@@ -556,7 +708,12 @@ class CoordinateViewer:
             if self.view_mode == "bands":
                 self._display_single_band()
             elif self.view_mode == "rgb":
-                self._display_rgb()
+                if self.image_type == 'rgb':
+                    self._display_rgb_image()
+                else:
+                    self._display_rgb()
+            elif self.view_mode == "grayscale":
+                self._display_grayscale()
             elif self.view_mode == "false_color":
                 self._display_false_color()
             elif self.view_mode == "red_edge":
@@ -653,19 +810,58 @@ class CoordinateViewer:
 
         self._show_image(pil_image, "NDVI-like (5,4,3) - Salute vegetazione")
 
+    def _display_rgb_image(self):
+        """Visualizza immagine RGB standard"""
+        # Per immagini RGB, i dati sono già in formato (3, height, width)
+        # Trasponi in (height, width, 3) per PIL
+        rgb_array = np.transpose(self.bands_data, (1, 2, 0))
+
+        # Normalizza se necessario (0-255)
+        if rgb_array.max() <= 1.0:
+            rgb_array = (rgb_array * 255).astype(np.uint8)
+        else:
+            rgb_array = rgb_array.astype(np.uint8)
+
+        pil_image = Image.fromarray(rgb_array, mode='RGB')
+        self._show_image(pil_image, "RGB Colori")
+
+    def _display_grayscale(self):
+        """Visualizza immagine RGB in bianco e nero"""
+        # Converti RGB in grayscale usando i pesi standard
+        rgb_array = np.transpose(self.bands_data, (1, 2, 0))
+
+        # Normalizza se necessario
+        if rgb_array.max() <= 1.0:
+            rgb_array = rgb_array * 255
+
+        # Conversione a grayscale: 0.299*R + 0.587*G + 0.114*B
+        gray_array = (0.299 * rgb_array[:, :, 0] +
+                     0.587 * rgb_array[:, :, 1] +
+                     0.114 * rgb_array[:, :, 2]).astype(np.uint8)
+
+        pil_image = Image.fromarray(gray_array, mode='L')
+        self._show_image(pil_image, "Bianco e Nero")
+
     def _show_image(self, pil_image: Image.Image, title: str):
-        """Mostra immagine nel canvas"""
-        # Ridimensiona se troppo grande
-        max_size = 800
+        """Mostra immagine nel canvas con supporto zoom"""
         original_size = pil_image.size
 
-        if pil_image.width > max_size or pil_image.height > max_size:
+        # Applica zoom
+        if self.zoom_level != 1.0:
+            new_width = int(original_size[0] * self.zoom_level)
+            new_height = int(original_size[1] * self.zoom_level)
+            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        # Ridimensiona se troppo grande (solo se zoom <= 1.0)
+        max_size = 800
+        if self.zoom_level <= 1.0 and (pil_image.width > max_size or pil_image.height > max_size):
             pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
             # Calcola fattore di scala per coordinate
             self.scale_factor = min(pil_image.width / original_size[0],
                                   pil_image.height / original_size[1])
         else:
-            self.scale_factor = 1.0
+            # Fattore di scala è il livello di zoom
+            self.scale_factor = self.zoom_level
 
         # Converti per tkinter
         self.photo_image = ImageTk.PhotoImage(pil_image)
@@ -685,8 +881,9 @@ class CoordinateViewer:
         # Aggiorna scroll region
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
-        # Aggiorna titolo frame
-        self.main_frame.config(text=f"Visualizzatore - {title}")
+        # Aggiorna titolo frame con zoom
+        zoom_info = f" (Zoom: {int(self.zoom_level * 100)}%)" if self.zoom_level != 1.0 else ""
+        self.main_frame.config(text=f"Visualizzatore - {title}{zoom_info}")
 
     def _show_error(self, message: str):
         """Mostra messaggio di errore nel canvas"""

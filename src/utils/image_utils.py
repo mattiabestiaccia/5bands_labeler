@@ -16,35 +16,77 @@ import os
 
 class ImageUtils:
     """Classe con utilità per immagini multispettrali"""
-    
+
     @staticmethod
-    def load_multispectral_image(file_path: str) -> Optional[np.ndarray]:
+    def load_image(file_path: str) -> Optional[Tuple[np.ndarray, str]]:
         """
-        Carica un'immagine multispettrale
-        
+        Carica un'immagine (multispettrale TIFF o RGB standard)
+
         Args:
-            file_path: Percorso del file TIFF
-            
+            file_path: Percorso del file
+
         Returns:
-            Array numpy (bands, height, width) o None se errore
+            Tuple (array numpy, tipo_immagine) o None se errore
+            tipo_immagine: 'multispectral' o 'rgb'
         """
         try:
-            image_data = tifffile.imread(file_path)
-            
-            # Normalizza formato
-            if len(image_data.shape) == 2:
-                # Immagine singola banda
-                image_data = image_data[np.newaxis, :, :]
-            elif len(image_data.shape) == 3:
-                # Verifica se è (height, width, bands) e trasponi se necessario
-                if image_data.shape[2] < image_data.shape[0] and image_data.shape[2] <= 5:
-                    image_data = np.transpose(image_data, (2, 0, 1))
-            
-            return image_data
-            
+            file_ext = Path(file_path).suffix.lower()
+
+            if file_ext in ['.tif', '.tiff']:
+                # Carica come TIFF multispettrale
+                image_data = tifffile.imread(file_path)
+
+                # Normalizza formato
+                if len(image_data.shape) == 2:
+                    # Immagine singola banda
+                    image_data = image_data[np.newaxis, :, :]
+                elif len(image_data.shape) == 3:
+                    # Verifica se è (height, width, bands) e trasponi se necessario
+                    if image_data.shape[2] < image_data.shape[0] and image_data.shape[2] <= 5:
+                        image_data = np.transpose(image_data, (2, 0, 1))
+
+                return image_data, 'multispectral'
+
+            elif file_ext in ['.png', '.jpg', '.jpeg']:
+                # Carica come immagine RGB standard
+                pil_image = Image.open(file_path)
+
+                # Converti in RGB se necessario
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+
+                # Converti in array numpy (height, width, 3)
+                rgb_array = np.array(pil_image)
+
+                # Trasponi in formato (bands, height, width) per compatibilità
+                image_data = np.transpose(rgb_array, (2, 0, 1))
+
+                return image_data, 'rgb'
+            else:
+                print(f"Formato file non supportato: {file_ext}")
+                return None
+
         except Exception as e:
             print(f"Errore caricamento immagine {file_path}: {e}")
             return None
+
+    @staticmethod
+    def load_multispectral_image(file_path: str) -> Optional[np.ndarray]:
+        """
+        Carica un'immagine multispettrale (retrocompatibilità)
+
+        Args:
+            file_path: Percorso del file TIFF
+
+        Returns:
+            Array numpy (bands, height, width) o None se errore
+        """
+        result = ImageUtils.load_image(file_path)
+        if result is None:
+            return None
+
+        image_data, image_type = result
+        return image_data
     
     @staticmethod
     def get_image_info(file_path: str) -> Optional[dict]:
@@ -211,13 +253,46 @@ class ImageUtils:
         return x1, y1, x2, y2
     
     @staticmethod
-    def find_tiff_files(directory: str) -> List[str]:
+    def find_supported_image_files(directory: str) -> List[str]:
         """
-        Trova tutti i file TIFF in una directory
-        
+        Trova tutti i file immagine supportati in una directory
+
         Args:
             directory: Percorso della directory
-            
+
+        Returns:
+            Lista di percorsi file immagine supportati
+        """
+        try:
+            directory_path = Path(directory)
+            if not directory_path.exists() or not directory_path.is_dir():
+                return []
+
+            image_files = []
+            # Supporta TIFF multispettrali e immagini RGB standard (case insensitive)
+            patterns = [
+                "*.tif", "*.tiff", "*.TIF", "*.TIFF",
+                "*.png", "*.PNG",
+                "*.jpg", "*.JPG", "*.jpeg", "*.JPEG"
+            ]
+
+            for pattern in patterns:
+                image_files.extend(directory_path.glob(pattern))
+
+            return [str(f) for f in sorted(image_files)]
+
+        except Exception as e:
+            print(f"Errore ricerca file immagine in {directory}: {e}")
+            return []
+
+    @staticmethod
+    def find_tiff_files(directory: str) -> List[str]:
+        """
+        Trova tutti i file TIFF in una directory (retrocompatibilità)
+
+        Args:
+            directory: Percorso della directory
+
         Returns:
             Lista di percorsi file TIFF
         """
@@ -225,19 +300,43 @@ class ImageUtils:
             directory_path = Path(directory)
             if not directory_path.exists() or not directory_path.is_dir():
                 return []
-            
+
             tiff_files = []
             patterns = ["*.tif", "*.tiff", "*.TIF", "*.TIFF"]
-            
+
             for pattern in patterns:
                 tiff_files.extend(directory_path.glob(pattern))
-            
+
             return [str(f) for f in sorted(tiff_files)]
-            
+
         except Exception as e:
             print(f"Errore ricerca file TIFF in {directory}: {e}")
             return []
-    
+
+    @staticmethod
+    def get_image_type(file_path: str) -> str:
+        """
+        Determina il tipo di immagine dal percorso del file
+
+        Args:
+            file_path: Percorso del file
+
+        Returns:
+            'multispectral' per TIFF, 'rgb' per PNG/JPG, 'unknown' per altri
+        """
+        try:
+            file_ext = Path(file_path).suffix.lower()
+
+            if file_ext in ['.tif', '.tiff']:
+                return 'multispectral'
+            elif file_ext in ['.png', '.jpg', '.jpeg']:
+                return 'rgb'
+            else:
+                return 'unknown'
+
+        except Exception:
+            return 'unknown'
+
     @staticmethod
     def get_pixel_value(
         image_data: np.ndarray,
