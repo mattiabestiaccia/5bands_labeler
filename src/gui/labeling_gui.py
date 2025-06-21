@@ -17,32 +17,12 @@ import os
 from pathlib import Path
 from typing import List
 
-try:
-    # Import relativi (quando usato come modulo)
-    from .file_selector import FileSelector
-    from .coordinate_viewer import CoordinateViewer
-    from .crop_controls import CropControls
-    from .project_selector import ProjectSelectorDialog
-    from ..core.project_manager import ProjectManager
-    from ..core.image_cropper import ImageCropper
-except ImportError:
-    # Import assoluti (quando eseguito direttamente)
-    import sys
-    from pathlib import Path
-
-    # Aggiungi directory al path
-    current_dir = Path(__file__).parent
-    src_dir = current_dir.parent
-    sys.path.insert(0, str(current_dir))
-    sys.path.insert(0, str(src_dir / "core"))
-    sys.path.insert(0, str(src_dir / "utils"))
-
-    from file_selector import FileSelector
-    from coordinate_viewer import CoordinateViewer
-    from crop_controls import CropControls
-    from project_selector import ProjectSelectorDialog
-    from project_manager import ProjectManager
-    from image_cropper import ImageCropper
+from gui.file_selector import FileSelector
+from gui.coordinate_viewer import CoordinateViewer
+from gui.crop_controls import CropControls
+from gui.project_selector import ProjectSelectorDialog
+from core.project_manager import ProjectManager
+from core.image_cropper import ImageCropper
 
 
 class LabelingGUI:

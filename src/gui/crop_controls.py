@@ -38,11 +38,48 @@ class CropControls:
     def setup_ui(self):
         """Configura l'interfaccia utente"""
         # Frame principale
-        self.main_frame = ttk.LabelFrame(self.parent, text="Controlli Crop", padding=10)
+        self.main_frame = ttk.LabelFrame(self.parent, text="Controlli Labeling", padding=10)
         self.main_frame.pack(fill="x", padx=10, pady=5)
         
+        # Frame selezione modalità
+        mode_frame = ttk.LabelFrame(self.main_frame, text="Modalità Labeling", padding=5)
+        mode_frame.pack(fill="x", pady=(0, 10))
+        
+        self.mode_var = tk.StringVar(value="crop")
+        
+        ttk.Radiobutton(
+            mode_frame,
+            text="🔲 Crop Mode",
+            variable=self.mode_var,
+            value="crop",
+            command=self.switch_mode
+        ).pack(side="left", padx=(0, 20))
+        
+        ttk.Radiobutton(
+            mode_frame,
+            text="🔸 Superpixel Mode",
+            variable=self.mode_var,
+            value="superpixel",
+            command=self.switch_mode
+        ).pack(side="left")
+        
+        # Frame per modalità crop
+        self.crop_mode_frame = ttk.Frame(self.main_frame)
+        self.crop_mode_frame.pack(fill="x", pady=(0, 10))
+        
+        # Frame per modalità superpixel
+        self.superpixel_mode_frame = ttk.Frame(self.main_frame)
+        
+        self.setup_crop_mode()
+        self.setup_superpixel_mode()
+        
+        # Inizializza con crop mode attivo
+        self.switch_mode()
+    
+    def setup_crop_mode(self):
+        """Configura l'interfaccia per la modalità crop"""
         # Frame dimensioni crop
-        size_frame = ttk.LabelFrame(self.main_frame, text="Dimensioni Crop", padding=5)
+        size_frame = ttk.LabelFrame(self.crop_mode_frame, text="Dimensioni Crop", padding=5)
         size_frame.pack(fill="x", pady=(0, 10))
         
         # Controlli dimensioni
@@ -102,7 +139,7 @@ class CropControls:
             ).pack(side="left", padx=1)
         
         # Frame coordinate
-        coord_frame = ttk.LabelFrame(self.main_frame, text="Coordinate Centro", padding=5)
+        coord_frame = ttk.LabelFrame(self.crop_mode_frame, text="Coordinate Centro", padding=5)
         coord_frame.pack(fill="x", pady=(0, 10))
         
         # Visualizzazione coordinate
@@ -150,7 +187,7 @@ class CropControls:
         ).pack(side="left", padx=(10, 0))
         
         # Frame anteprima crop
-        preview_frame = ttk.LabelFrame(self.main_frame, text="Anteprima Crop", padding=5)
+        preview_frame = ttk.LabelFrame(self.crop_mode_frame, text="Anteprima Crop", padding=5)
         preview_frame.pack(fill="x", pady=(0, 10))
         
         self.preview_label = ttk.Label(
@@ -161,7 +198,7 @@ class CropControls:
         self.preview_label.pack()
         
         # Frame salvataggio
-        save_frame = ttk.LabelFrame(self.main_frame, text="Salvataggio", padding=5)
+        save_frame = ttk.LabelFrame(self.crop_mode_frame, text="Salvataggio", padding=5)
         save_frame.pack(fill="x")
         
         # Nome file
@@ -199,6 +236,142 @@ class CropControls:
         self.size_var.trace('w', self.update_preview)
         self.x_var.trace('w', self.update_preview)
         self.y_var.trace('w', self.update_preview)
+    
+    def setup_superpixel_mode(self):
+        """Configura l'interfaccia per la modalità superpixel"""
+        # Frame algoritmo superpixel
+        algo_frame = ttk.LabelFrame(self.superpixel_mode_frame, text="Algoritmo Superpixel", padding=5)
+        algo_frame.pack(fill="x", pady=(0, 10))
+        
+        ttk.Label(algo_frame, text="Algoritmo:").pack(side="left")
+        self.algo_var = tk.StringVar(value="slic")
+        
+        algo_combo = ttk.Combobox(
+            algo_frame,
+            textvariable=self.algo_var,
+            values=["SLIC", "Felzenszwalb", "Quickshift"],
+            state="readonly",
+            width=15
+        )
+        algo_combo.pack(side="left", padx=(5, 0))
+        
+        # Frame parametri
+        params_frame = ttk.LabelFrame(self.superpixel_mode_frame, text="Parametri", padding=5)
+        params_frame.pack(fill="x", pady=(0, 10))
+        
+        # Numero superpixel
+        n_segments_frame = ttk.Frame(params_frame)
+        n_segments_frame.pack(fill="x", pady=(0, 5))
+        
+        ttk.Label(n_segments_frame, text="N. Superpixel:").pack(side="left")
+        self.n_segments_var = tk.IntVar(value=400)
+        
+        ttk.Spinbox(
+            n_segments_frame,
+            from_=50,
+            to=2000,
+            increment=50,
+            textvariable=self.n_segments_var,
+            width=8
+        ).pack(side="left", padx=(5, 5))
+        
+        ttk.Scale(
+            n_segments_frame,
+            from_=50,
+            to=2000,
+            orient="horizontal",
+            variable=self.n_segments_var,
+            length=150
+        ).pack(side="left", padx=(5, 0))
+        
+        # Compattezza
+        compactness_frame = ttk.Frame(params_frame)
+        compactness_frame.pack(fill="x", pady=(0, 5))
+        
+        ttk.Label(compactness_frame, text="Compattezza:").pack(side="left")
+        self.compactness_var = tk.DoubleVar(value=10.0)
+        
+        ttk.Spinbox(
+            compactness_frame,
+            from_=1.0,
+            to=50.0,
+            increment=1.0,
+            textvariable=self.compactness_var,
+            width=8,
+            format="%.1f"
+        ).pack(side="left", padx=(5, 5))
+        
+        # Frame anteprima superpixel
+        sp_preview_frame = ttk.LabelFrame(self.superpixel_mode_frame, text="Anteprima Superpixel", padding=5)
+        sp_preview_frame.pack(fill="x", pady=(0, 10))
+        
+        self.sp_preview_label = ttk.Label(
+            sp_preview_frame,
+            text="Seleziona parametri e clicca 'Genera' per vedere l'anteprima",
+            foreground="gray"
+        )
+        self.sp_preview_label.pack()
+        
+        ttk.Button(
+            sp_preview_frame,
+            text="🔸 Genera Superpixel",
+            command=self.generate_superpixels
+        ).pack(pady=(5, 0))
+        
+        # Frame selezione superpixel
+        selection_frame = ttk.LabelFrame(self.superpixel_mode_frame, text="Selezione e Salvataggio", padding=5)
+        selection_frame.pack(fill="x")
+        
+        ttk.Label(
+            selection_frame,
+            text="Clicca sui superpixel nell'immagine per selezionarli",
+            foreground="blue"
+        ).pack()
+        
+        button_frame = ttk.Frame(selection_frame)
+        button_frame.pack(fill="x", pady=(5, 0))
+        
+        ttk.Button(
+            button_frame,
+            text="💾 Salva Selezione",
+            command=self.save_superpixel_selection,
+            state="disabled"
+        ).pack(side="left")
+        
+        ttk.Button(
+            button_frame,
+            text="🔄 Pulisci Selezione",
+            command=self.clear_superpixel_selection
+        ).pack(side="left", padx=(10, 0))
+    
+    def switch_mode(self):
+        """Cambia tra modalità crop e superpixel"""
+        current_mode = self.mode_var.get()
+        
+        if current_mode == "crop":
+            self.crop_mode_frame.pack(fill="x", pady=(0, 10))
+            self.superpixel_mode_frame.pack_forget()
+        else:
+            self.superpixel_mode_frame.pack(fill="x", pady=(0, 10))
+            self.crop_mode_frame.pack_forget()
+    
+    def generate_superpixels(self):
+        """Genera superpixel - placeholder per implementazione futura"""
+        self.sp_preview_label.config(
+            text="🔸 Funzionalità in sviluppo - Superpixel sarà implementata",
+            foreground="orange"
+        )
+    
+    def save_superpixel_selection(self):
+        """Salva selezione superpixel - placeholder per implementazione futura"""
+        messagebox.showinfo("Info", "Funzionalità Superpixel in sviluppo")
+    
+    def clear_superpixel_selection(self):
+        """Pulisce selezione superpixel - placeholder per implementazione futura"""
+        self.sp_preview_label.config(
+            text="Seleziona parametri e clicca 'Genera' per vedere l'anteprima",
+            foreground="gray"
+        )
     
     def set_crop_size(self, size: int):
         """Imposta la dimensione del crop"""

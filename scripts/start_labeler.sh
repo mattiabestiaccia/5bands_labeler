@@ -57,7 +57,17 @@ install_dependencies() {
         exit 1
     fi
     
-    echo -e "${GREEN}✅ Dipendenze installate${NC}"
+    # Installa il package in modalità editable per import semplificati
+    echo -e "${YELLOW}📦 Installazione package in modalità editable...${NC}"
+    cd "$PROJECT_DIR"
+    pip install -e .
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Errore installazione package editable${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ Dipendenze e package installati${NC}"
 }
 
 # Verifica se Python è disponibile
@@ -77,8 +87,8 @@ else
     
     # Verifica se le dipendenze sono installate
     source "$VENV_DIR/bin/activate"
-    if ! python -c "import PIL, numpy, tifffile" &> /dev/null; then
-        echo -e "${YELLOW}📦 Dipendenze mancanti, reinstallazione...${NC}"
+    if ! python -c "import PIL, numpy, tifffile" &> /dev/null || ! python -c "import src.gui.labeling_gui" &> /dev/null; then
+        echo -e "${YELLOW}📦 Dipendenze mancanti o package non installato, reinstallazione...${NC}"
         install_dependencies
     fi
 fi
