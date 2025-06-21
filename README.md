@@ -1,178 +1,184 @@
-# Labeler Multispettrale 5 Bande
+# 🌈 5-Band Multispectral Labeler
 
-Interfaccia grafica per il labeling e crop di immagini multispettrali con 5 bande, ottimizzata per camera MicaSense Red Edge.
+Graphical interface for labeling and cropping 5-band multispectral images, optimized for the MicaSense RedEdge camera.
 
-## 🚀 Avvio Rapido
+## 🚀 Quick Start
 
 ```bash
-# Metodo 1 - Script automatico (raccomandato)
+# Method 1 - Automatic script (recommended)
 cd /home/brus/Projects/HPL/paper/5bands_labeler
 bash scripts/start_labeler.sh
 
-# Metodo 2 - Manuale con ambiente virtuale
+# Method 2 - Manual with virtual environment
 cd /home/brus/Projects/HPL/paper/5bands_labeler
 source venv_labeler/bin/activate
 python3 scripts/run_labeler.py
 
-# Metodo 3 - Comando singolo
+# Method 3 - One-liner
 cd /home/brus/Projects/HPL/paper/5bands_labeler && source venv_labeler/bin/activate && python3 scripts/run_labeler.py
 ```
 
-## 📁 Struttura Progetto
+## 📁 Project Structure
 
 ```
 5bands_labeler/
-├── src/                           # Codice sorgente principale
-│   ├── gui/                      # Componenti interfaccia grafica
-│   │   ├── labeling_gui.py       # Interfaccia principale
-│   │   ├── coordinate_viewer.py  # Visualizzatore con click coordinate
-│   │   ├── crop_controls.py      # Controlli per il crop
-│   │   ├── file_selector.py      # Selettore file/cartelle
-│   │   └── project_selector.py   # Selettore progetti
-│   ├── core/                     # Logica di business
-│   │   ├── image_cropper.py      # Logica di crop immagini
-│   │   └── project_manager.py    # Gestione progetti
-│   ├── utils/                    # Funzioni di utilità
-│   │   ├── image_utils.py        # Utilità elaborazione immagini
-│   │   └── superpixel_utils.py   # Algoritmi superpixel
-│   └── 5bands_labeler.egg-info/  # Metadati installazione
-├── scripts/                      # Script di avvio e utilità
-│   ├── run_labeler.py           # Script principale di avvio
-│   ├── start_labeler.sh         # Script bash automatico
-│   └── create_light_augmented_dataset.py  # Creazione dataset
-├── docs/                         # Documentazione dettagliata
-│   └── README.md                # Documentazione completa
-├── projects/                     # Progetti utente
-│   ├── test_proj/               # Progetto di test (incluso in git)
-│   ├── project_metadata.json   # Metadati progetti globali
-│   └── labeling_project_*/      # Progetti utente (esclusi da git)
-│       ├── originals/           # Immagini originali
-│       ├── crops/               # Crop estratti
-│       └── project_metadata.json  # Metadati progetto
-├── venv_labeler/                 # Ambiente virtuale Python
-├── setup.py                     # Configurazione installazione
-├── requirements.txt             # Dipendenze Python
-└── README.md                    # Questo file
+├── src/                           # Main source code
+│   ├── gui/                       # GUI components
+│   │   ├── labeling_gui.py        # Main interface
+│   │   ├── coordinate_viewer.py   # Viewer with click-to-select coordinates
+│   │   ├── crop_controls.py       # Crop controls
+│   │   ├── file_selector.py       # File/folder selector
+│   │   └── project_selector.py    # Project selector
+│   ├── core/                      # Business logic
+│   │   ├── image_cropper.py       # Image cropping logic
+│   │   └── project_manager.py     # Project management
+│   ├── utils/                     # Utility functions
+│   │   ├── image_utils.py         # Image processing helpers
+│   │   └── superpixel_utils.py    # Superpixel algorithms
+│   └── 5bands_labeler.egg-info/   # Installation metadata
+├── scripts/                       # Startup and utility scripts
+│   ├── run_labeler.py             # Main entrypoint
+│   ├── start_labeler.sh           # Automatic startup script
+│   └── create_light_augmented_dataset.py  # Dataset creation utility
+├── docs/                          # Detailed documentation
+│   └── README.md
+├── projects/                      # User projects
+│   ├── test_proj/                 # Test project (included in git)
+│   ├── project_metadata.json      # Global metadata file
+│   └── labeling_project_*/        # User projects (excluded from git)
+│       ├── originals/             # Original images
+│       ├── crops/                 # Extracted crops
+│       └── project_metadata.json  # Project metadata
+├── venv_labeler/                  # Python virtual environment
+├── setup.py                       # Installation configuration
+├── requirements.txt               # Python dependencies
+└── README.md                      # This file
 ```
 
-## ✨ Funzionalità
+## ✨ Features
 
-- **Caricamento immagini**: File singoli, multipli o cartelle TIFF
-- **5 modalità di visualizzazione**:
-  - Bande singole (1-5)
-  - RGB Naturale (3,2,1)
-  - False Color IR (5,3,2) - vegetazione in rosso
-  - Red Edge Enhanced (4,3,2) - stress vegetazione
-  - NDVI-like (5,4,3) - salute vegetazione
-- **Click per coordinate**: Click sull'immagine per selezionare coordinate
-- **Anteprima crop in tempo reale**: Rettangolo giallo tratteggiato sull'immagine
-- **Anteprima crop estratto**: Visualizzazione del crop effettivo in pannello dedicato
-- **Crop quadrato**: Ritaglio quadrato centrato sulle coordinate selezionate
-- **Controlli dimensioni avanzati**: Spinbox, slider e preset per dimensioni (16-512px)
-- **Gestione progetti automatica**: Struttura `proj/originals/crops/`
-- **Caricamento progetti esistenti**: Riprendi lavori precedenti
-- **Salvataggio organizzato**: Crop salvati con nomi descrittivi
-- **Cleanup automatico**: Rimozione progetti vuoti alla chiusura
+* **Image loading**: Single, multiple, or TIFF folders
+* **5 visualization modes**:
 
-## 📋 Requisiti
+  * Single bands (1–5)
+  * Natural RGB (3,2,1)
+  * False Color IR (5,3,2) – vegetation in red
+  * Red Edge Enhanced (4,3,2) – stress detection
+  * NDVI-like (5,4,3) – vegetation health
+* **Click to select coordinates**: Get precise pixel location
+* **Real-time crop preview**: Dashed yellow box on image
+* **Preview extracted crop**: Display of actual cropped patch
+* **Square crop**: Centered square crop on selected coordinates
+* **Advanced crop controls**: Spinbox, slider, and presets (16–512px)
+* **Automatic project management**: `proj/originals/crops/` structure
+* **Load existing projects**: Resume previous work
+* **Organized saving**: Descriptive crop filenames
+* **Automatic cleanup**: Empty projects removed on close
 
-- **Python 3.7+** (testato fino a 3.11)
-- **tkinter** (incluso con Python)
-- **Dipendenze principali**:
-  - `Pillow>=9.0.0` - Elaborazione immagini
-  - `numpy>=1.21.0` - Calcoli numerici
-  - `tifffile>=2021.11.2` - Lettura file TIFF
-  - `imagecodecs>=2021.11.20` - Supporto compressione TIFF
-  - `scikit-image>=0.19.0` - Algoritmi superpixel
+## 📋 Requirements
 
-### Installazione Dipendenze
+* **Python 3.7+** (tested up to 3.11)
+* **tkinter** (included with Python)
+* **Main dependencies**:
+
+  * `Pillow>=9.0.0` – Image processing
+  * `numpy>=1.21.0` – Numerical computing
+  * `tifffile>=2021.11.2` – TIFF file handling
+  * `imagecodecs>=2021.11.20` – TIFF compression support
+  * `scikit-image>=0.19.0` – Superpixel algorithms
+
+### Dependency Installation
 
 ```bash
-# Installazione automatica con pip
+# Install dependencies
 pip install -r requirements.txt
 
-# Oppure installazione come pacchetto
+# Or install as a package
 pip install -e .
 ```
 
-## 📂 Gestione Progetti
+## 📂 Project Management
 
-Il labeler organizza automaticamente il lavoro in progetti con struttura standardizzata:
+The labeler automatically organizes work into standardized project folders:
 
 ```
 projects/
-├── project_metadata.json           # Registro globale progetti
-├── test_proj/                      # Progetto di esempio
-└── labeling_project_YYYYMMDD_HHMMSS/  # Progetti utente
-    ├── originals/                  # Immagini originali caricate
-    ├── crops/                      # Crop estratti organizzati
+├── project_metadata.json              # Global project registry
+├── test_proj/                         # Example project
+└── labeling_project_YYYYMMDD_HHMMSS/  # User projects
+    ├── originals/                     # Loaded images
+    ├── crops/                         # Extracted crops
     │   ├── image1_crop_001.tif
     │   ├── image1_crop_002.tif
     │   └── ...
-    └── project_metadata.json       # Metadati specifici progetto
+    └── project_metadata.json          # Project-specific metadata
 ```
 
-**Caratteristiche**:
-- **Creazione automatica**: Nuovi progetti con timestamp
-- **Caricamento esistenti**: Riprendi lavori precedenti
-- **Cleanup automatico**: Rimozione progetti vuoti alla chiusura
-- **Backup sicuro**: Solo `test_proj` incluso in git, progetti utente esclusi
+**Highlights**:
 
-## 📖 Documentazione
+* **Automatic creation**: New projects named by timestamp
+* **Resume existing**: Continue previous work
+* **Safe cleanup**: Empty projects are removed on exit
+* **Safe backup**: Only `test_proj` is versioned; user projects are ignored by git
 
-Per informazioni dettagliate, consulta la [documentazione completa](docs/README.md).
+## 📖 Documentation
 
-## 🔧 Sviluppo
+For detailed instructions, see the [full documentation](docs/README.md).
 
-### Struttura Codice Dettagliata
+## 🔧 Development
 
-**Interfaccia Grafica (`src/gui/`)**:
-- `labeling_gui.py`: Interfaccia principale e coordinamento componenti
-- `coordinate_viewer.py`: Visualizzatore immagini con click per coordinate
-- `crop_controls.py`: Controlli avanzati per dimensioni crop
-- `file_selector.py`: Selettore file e cartelle con anteprima
-- `project_selector.py`: Gestione selezione e creazione progetti
+### Code Overview
 
-**Logica Core (`src/core/`)**:
-- `image_cropper.py`: Algoritmi di crop e elaborazione immagini
-- `project_manager.py`: Gestione progetti, metadati e strutture
+**GUI (`src/gui/`)**:
 
-**Utilità (`src/utils/`)**:
-- `image_utils.py`: Funzioni elaborazione e visualizzazione immagini
-- `superpixel_utils.py`: Algoritmi superpixel per segmentazione avanzata
+* `labeling_gui.py`: Main GUI and component coordination
+* `coordinate_viewer.py`: Image viewer with coordinate click
+* `crop_controls.py`: Advanced controls for crop size
+* `file_selector.py`: File/folder selection with preview
+* `project_selector.py`: Project creation and selection
 
-### Installazione Sviluppo
+**Core logic (`src/core/`)**:
+
+* `image_cropper.py`: Cropping algorithms and logic
+* `project_manager.py`: Metadata and project structure handling
+
+**Utilities (`src/utils/`)**:
+
+* `image_utils.py`: Visualization and preprocessing functions
+* `superpixel_utils.py`: Advanced superpixel segmentation
+
+### Development Installation
 
 ```bash
-# Clona e configura ambiente
+# Clone and set up environment
 git clone <repository-url>
 cd 5bands_labeler
 
-# Crea ambiente virtuale (se non esiste)
+# Create virtual environment
 python3 -m venv venv_labeler
 source venv_labeler/bin/activate
 
-# Installa in modalità sviluppo
+# Install in development mode
 pip install -e .
 
-# Oppure installa dipendenze manualmente
+# Or install dependencies manually
 pip install -r requirements.txt
 ```
 
-### Test e Debug
+### Testing and Debugging
 
 ```bash
-# Avvio normale
+# Standard launch
 bash scripts/start_labeler.sh
 
-# Avvio con ambiente virtuale attivo
+# Launch with virtual environment
 source venv_labeler/bin/activate
 python3 scripts/run_labeler.py
 
-# Debug con output verboso
+# Debug with verbose output
 python3 -u scripts/run_labeler.py
 ```
 
-## 📄 Licenza
+## 📄 License
 
-Progetto HPL - Labeler Multispettrale 5 Bande
+HPL Project – 5-Band Multispectral Labeler
