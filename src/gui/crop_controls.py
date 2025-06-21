@@ -13,25 +13,37 @@ import os
 
 
 class CropControls:
-    """Widget per controlli del crop"""
+    """Widget per controlli del crop e superpixel"""
 
-    def __init__(self, parent, on_crop_save: Callable = None, on_crop_size_change: Callable = None):
+    def __init__(self, parent, on_crop_save: Callable = None, on_crop_size_change: Callable = None,
+                 on_superpixel_generated: Callable = None, on_superpixel_mode_change: Callable = None):
         """
-        Inizializza i controlli crop
+        Inizializza i controlli crop e superpixel
 
         Args:
             parent: Widget parent tkinter
             on_crop_save: Callback chiamato per salvare il crop (size, coordinates, filename)
             on_crop_size_change: Callback chiamato quando cambia la dimensione del crop
+            on_superpixel_generated: Callback chiamato quando vengono generati superpixel (segments, overlay)
+            on_superpixel_mode_change: Callback chiamato quando cambia modalità (show_superpixel: bool)
         """
         self.parent = parent
         self.on_crop_save = on_crop_save
         self.on_crop_size_change = on_crop_size_change
+        self.on_superpixel_generated = on_superpixel_generated
+        self.on_superpixel_mode_change = on_superpixel_mode_change
         
-        # Stato controlli
+        # Stato controlli crop
         self.current_coordinates = None
         self.current_image_size = None  # (width, height)
         self.current_filename = None
+        
+        # Stato superpixel
+        self.current_image_data = None  # (bands, height, width)
+        self.current_image_type = None  # 'multispectral' o 'rgb'
+        self.current_view_mode = None   # modalità visualizzazione corrente
+        self.superpixel_segments = None # array segmentazione
+        self.superpixel_overlay = None  # overlay RGBA
         
         self.setup_ui()
     
@@ -318,60 +330,156 @@ class CropControls:
             command=self.generate_superpixels
         ).pack(pady=(5, 0))
         
-        # Frame selezione superpixel
-        selection_frame = ttk.LabelFrame(self.superpixel_mode_frame, text="Selezione e Salvataggio", padding=5)
-        selection_frame.pack(fill="x")
+        # Informazioni per l'utente
+        info_frame = ttk.Frame(self.superpixel_mode_frame)
+        info_frame.pack(fill="x", pady=(10, 0))
         
         ttk.Label(
-            selection_frame,
-            text="Clicca sui superpixel nell'immagine per selezionarli",
+            info_frame,
+            text="Clicca sui superpixel nell'immagine per salvarli automaticamente",
             foreground="blue"
         ).pack()
-        
-        button_frame = ttk.Frame(selection_frame)
-        button_frame.pack(fill="x", pady=(5, 0))
-        
-        ttk.Button(
-            button_frame,
-            text="💾 Salva Selezione",
-            command=self.save_superpixel_selection,
-            state="disabled"
-        ).pack(side="left")
-        
-        ttk.Button(
-            button_frame,
-            text="🔄 Pulisci Selezione",
-            command=self.clear_superpixel_selection
-        ).pack(side="left", padx=(10, 0))
     
     def switch_mode(self):
         """Cambia tra modalità crop e superpixel"""
         current_mode = self.mode_var.get()
         
         if current_mode == "crop":
+            # Modalità Crop: mostra pannello crop, nascondi superpixel
             self.crop_mode_frame.pack(fill="x", pady=(0, 10))
             self.superpixel_mode_frame.pack_forget()
+            
+            # Nascondi overlay superpixel quando in modalità crop
+            if hasattr(self, 'on_superpixel_mode_change'):
+                self.on_superpixel_mode_change(False)  # False = nascondi superpixel
+                
         else:
+            # Modalità Superpixel: mostra pannello superpixel, nascondi crop
             self.superpixel_mode_frame.pack(fill="x", pady=(0, 10))
             self.crop_mode_frame.pack_forget()
+            
+            # Mostra overlay superpixel se disponibile
+            if hasattr(self, 'on_superpixel_mode_change'):
+                self.on_superpixel_mode_change(True)  # True = mostra superpixel
     
     def generate_superpixels(self):
-        """Genera superpixel - placeholder per implementazione futura"""
-        self.sp_preview_label.config(
-            text="🔸 Funzionalità in sviluppo - Superpixel sarà implementata",
-            foreground="orange"
-        )
+        """Genera superpixel usando l'algoritmo selezionato"""
+        if self.current_image_data is None:
+            self.sp_preview_label.config(
+                text="❌ Nessuna immagine caricata",
+                foreground="red"
+            )
+            return
+        
+        try:
+            # Import superpixel utils
+            try:
+                from utils.superpixel_utils import SuperpixelGenerator
+            except ImportError:
+                # Fallback per import assoluto
+                import sys
+                from pathlib import Path
+                sys.path.insert(0, str(Path(__file__).parent.parent))
+                from utils.superpixel_utils import SuperpixelGenerator
+            
+            self.sp_preview_label.config(
+                text="🔄 Generazione superpixel in corso...",
+                foreground="blue"
+            )
+            self.parent.update()  # Aggiorna UI
+            
+            # Prepara immagine per superpixel
+            processed_image = SuperpixelGenerator.prepare_image_for_superpixel(
+                self.current_image_data, 
+                self.current_image_type,
+                self.current_view_mode
+            )
+            
+            if processed_image is None:
+                self.sp_preview_label.config(
+                    text="❌ Errore preparazione immagine",
+                    foreground="red"
+                )
+                return
+            
+            # Ottieni parametri
+            algorithm = self.algo_var.get().lower()
+            n_segments = self.n_segments_var.get()
+            compactness = self.compactness_var.get()
+            
+            # Genera superpixel in base all'algoritmo selezionato
+            if algorithm == "slic":
+                segments = SuperpixelGenerator.generate_slic(
+                    processed_image, 
+                    n_segments=n_segments, 
+                    compactness=compactness
+                )
+            elif algorithm == "felzenszwalb":
+                scale = n_segments / 4  # Converti n_segments in scale approssimativo
+                segments = SuperpixelGenerator.generate_felzenszwalb(
+                    processed_image, 
+                    scale=scale, 
+                    min_size=50
+                )
+            elif algorithm == "quickshift":
+                kernel_size = max(3, int(compactness / 3))  # Usa compactness per kernel_size
+                segments = SuperpixelGenerator.generate_quickshift(
+                    processed_image, 
+                    kernel_size=kernel_size, 
+                    max_dist=15
+                )
+            else:
+                self.sp_preview_label.config(
+                    text="❌ Algoritmo non riconosciuto",
+                    foreground="red"
+                )
+                return
+            
+            if segments is None:
+                self.sp_preview_label.config(
+                    text="❌ Errore generazione superpixel - installare scikit-image",
+                    foreground="red"
+                )
+                return
+            
+            # Crea overlay bordi
+            overlay = SuperpixelGenerator.create_boundary_overlay(
+                segments, 
+                color=(255, 255, 0),  # Giallo
+                thickness=1
+            )
+            
+            if overlay is None:
+                self.sp_preview_label.config(
+                    text="❌ Errore creazione overlay",
+                    foreground="red"
+                )
+                return
+            
+            # Salva risultati
+            self.superpixel_segments = segments
+            self.superpixel_overlay = overlay
+            
+            # Conta superpixel generati
+            n_generated = SuperpixelGenerator.get_superpixel_count(segments)
+            
+            # Aggiorna label
+            self.sp_preview_label.config(
+                text=f"✅ {n_generated} superpixel generati con {algorithm.upper()}",
+                foreground="green"
+            )
+            
+            # Notifica coordinate viewer
+            if self.on_superpixel_generated:
+                self.on_superpixel_generated(segments, overlay)
+                
+        except Exception as e:
+            error_msg = f"❌ Errore: {str(e)}"
+            self.sp_preview_label.config(text=error_msg, foreground="red")
+            print(f"[DEBUG] Errore generazione superpixel: {e}")
+            import traceback
+            traceback.print_exc()
     
-    def save_superpixel_selection(self):
-        """Salva selezione superpixel - placeholder per implementazione futura"""
-        messagebox.showinfo("Info", "Funzionalità Superpixel in sviluppo")
-    
-    def clear_superpixel_selection(self):
-        """Pulisce selezione superpixel - placeholder per implementazione futura"""
-        self.sp_preview_label.config(
-            text="Seleziona parametri e clicca 'Genera' per vedere l'anteprima",
-            foreground="gray"
-        )
     
     def set_crop_size(self, size: int):
         """Imposta la dimensione del crop"""
@@ -421,7 +529,7 @@ class CropControls:
         self.generate_auto_filename()
     
     def set_image_info(self, filename: str, width: int, height: int):
-        """Imposta informazioni sull'immagine corrente"""
+        """Imposta informazioni sull'immagine corrente per crop"""
         self.current_filename = filename
         self.current_image_size = (width, height)
         
@@ -430,6 +538,24 @@ class CropControls:
         self.y_spinbox.config(to=height-1)
         
         self.update_preview()
+    
+    def set_current_image_data(self, bands_data, image_type: str, view_mode: str = "rgb"):
+        """
+        Imposta i dati dell'immagine corrente per superpixel
+        
+        Args:
+            bands_data: Array (bands, height, width)
+            image_type: 'multispectral' o 'rgb'
+            view_mode: modalità visualizzazione corrente
+        """
+        self.current_image_data = bands_data
+        self.current_image_type = image_type
+        self.current_view_mode = view_mode
+        
+        # Reset superpixel quando cambia immagine
+        self.superpixel_segments = None
+        self.superpixel_overlay = None
+        self.clear_superpixel_selection()
     
     def update_preview(self, *args):
         """Aggiorna l'anteprima del crop"""
@@ -525,3 +651,15 @@ class CropControls:
             'size': self.size_var.get(),
             'filename': self.filename_var.get().strip()
         }
+    
+    def get_current_mode(self) -> str:
+        """Restituisce la modalità corrente ('crop' o 'superpixel')"""
+        return self.mode_var.get()
+    
+    def is_crop_mode(self) -> bool:
+        """Restituisce True se in modalità crop"""
+        return self.get_current_mode() == "crop"
+    
+    def is_superpixel_mode(self) -> bool:
+        """Restituisce True se in modalità superpixel"""
+        return self.get_current_mode() == "superpixel"

@@ -23,8 +23,11 @@ cd /home/brus/Projects/HPL/paper/5bands_labeler && source venv_labeler/bin/activ
 
 ### Development Setup
 ```bash
-# Install dependencies
-pip install pillow numpy tifffile imagecodecs
+# Install dependencies (from requirements.txt)
+pip install pillow numpy tifffile imagecodecs scikit-image
+
+# Install package in editable mode (recommended for development)
+pip install -e .
 
 # For development dependencies
 pip install pytest pytest-cov black flake8
@@ -38,7 +41,7 @@ The project uses `venv_labeler/` virtual environment which is automatically mana
 ### High-Level Structure
 - **GUI Layer** (`src/gui/`): tkinter-based user interface components
 - **Core Logic** (`src/core/`): Business logic for image processing and project management
-- **Utilities** (`src/utils/`): Reusable image processing functions
+- **Utilities** (`src/utils/`): Reusable image processing functions and superpixel algorithms
 - **Scripts** (`scripts/`): Entry points and utility scripts
 - **Projects** (`projects/`): User data storage with automatic project management
 
@@ -55,6 +58,7 @@ The project uses `venv_labeler/` virtual environment which is automatically mana
 - `project_manager.py`: Handles project creation, loading, and metadata management
 - `image_cropper.py`: Multispectral image cropping logic with band preservation
 - `image_utils.py`: Common image processing utilities
+- `superpixel_utils.py`: SLIC, Felzenszwalb, and Quickshift superpixel segmentation algorithms
 
 ### Import System
 The codebase uses a clean package-based import structure with proper setuptools configuration:
@@ -92,6 +96,7 @@ projects/
 - Center-coordinate based cropping
 - Real-time preview with overlay
 - Automatic file naming based on coordinates and dimensions
+- Superpixel-based cropping with SLIC, Felzenszwalb, and Quickshift algorithms
 
 ## Development Notes
 
@@ -101,7 +106,7 @@ projects/
 - Module: `src/gui/labeling_gui.py:main()`
 
 ### Dependencies
-- **Core**: `pillow`, `numpy`, `tifffile`, `imagecodecs`
+- **Core**: `pillow`, `numpy`, `tifffile`, `imagecodecs`, `scikit-image`
 - **GUI**: `tkinter` (standard library)
 - **Dev**: `pytest`, `black`, `flake8` (optional)
 

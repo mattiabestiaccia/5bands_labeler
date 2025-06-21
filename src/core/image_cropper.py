@@ -55,8 +55,8 @@ class ImageCropper:
             half_size = crop_size // 2
             x1 = max(0, center_x - half_size)
             y1 = max(0, center_y - half_size)
-            x2 = min(width, center_x + half_size)
-            y2 = min(height, center_y + half_size)
+            x2 = min(width, center_x - half_size + crop_size)
+            y2 = min(height, center_y - half_size + crop_size)
             
             # Verifica che il crop sia valido
             actual_width = x2 - x1
@@ -113,8 +113,8 @@ class ImageCropper:
         # Calcola bounds ideali
         x1 = center_x - half_size
         y1 = center_y - half_size
-        x2 = center_x + half_size
-        y2 = center_y + half_size
+        x2 = center_x - half_size + crop_size
+        y2 = center_y - half_size + crop_size
         
         # Aggiusta se fuori dai bounds
         if x1 < 0:
@@ -195,12 +195,17 @@ class ImageCropper:
             crop_data: Dati del crop (bands, height, width)
             output_path: Percorso di output
         """
-        # Crea directory se non esiste
-        output_dir = Path(output_path).parent
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Salva come TIFF multibanda
-        tifffile.imwrite(output_path, crop_data, photometric='minisblack')
+        try:
+            # Crea directory se non esiste
+            output_dir = Path(output_path).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Salva come TIFF multibanda
+            tifffile.imwrite(output_path, crop_data, photometric='minisblack')
+                
+        except Exception as e:
+            print(f"Errore salvataggio TIFF: {e}")
+            raise
     
     def crop_from_file(
         self,

@@ -15,7 +15,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
+import numpy as np
 
 from gui.file_selector import FileSelector
 from gui.coordinate_viewer import CoordinateViewer
@@ -77,12 +78,14 @@ class LabelingGUI:
         self.setup_project_info(left_frame)
         
         # Controlli crop
-        self.crop_controls = CropControls(left_frame, self.on_crop_save, self.on_crop_size_change)
+        self.crop_controls = CropControls(left_frame, self.on_crop_save, self.on_crop_size_change, 
+                                        self.on_superpixel_generated, self.on_superpixel_mode_change)
         
         # === PANNELLO DESTRO ===
         
         # Visualizzatore con coordinate
         self.coordinate_viewer = CoordinateViewer(right_frame, self.on_coordinate_click)
+        self.coordinate_viewer.on_superpixel_selected = self.on_superpixel_selected
         
         # Barra di stato
         self.setup_status_bar()
@@ -107,8 +110,6 @@ class LabelingGUI:
 
         ttk.Button(buttons_frame, text="📁 Nuovo Progetto",
                   command=self.create_new_project).pack(side="left", padx=(0, 5))
-        ttk.Button(buttons_frame, text="📂 Carica Progetto",
-                  command=self.load_existing_project).pack(side="left", padx=(0, 5))
         ttk.Button(buttons_frame, text="🗂️ Apri Cartella",
                   command=self.open_project_folder).pack(side="left")
         
@@ -139,7 +140,6 @@ class LabelingGUI:
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Nuovo Progetto", command=self.create_new_project)
-        file_menu.add_command(label="Carica Progetto...", command=self.load_existing_project)
         file_menu.add_separator()
         file_menu.add_command(label="Esci", command=self.on_closing)
         
@@ -151,7 +151,6 @@ class LabelingGUI:
         # Menu Aiuto
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Aiuto", menu=help_menu)
-        help_menu.add_command(label="Info", command=self.show_about)
     
     def on_selection_change(self, selected_paths, selection_type):
         """Gestisce il cambio di selezione file"""
@@ -201,6 +200,12 @@ class LabelingGUI:
                         height, width = self.current_image_data.shape[1], self.current_image_data.shape[2]
                         self.crop_controls.set_image_info(
                             os.path.basename(first_image_path), width, height
+                        )
+                        
+                        # Passa i dati immagine ai controlli crop per superpixel
+                        view_mode = getattr(self.coordinate_viewer, 'view_mode', 'rgb')
+                        self.crop_controls.set_current_image_data(
+                            self.current_image_data, 'multispectral', view_mode
                         )
                     
                     self.project_manager.mark_images_loaded()
@@ -415,6 +420,12 @@ class LabelingGUI:
                     self.crop_controls.set_image_info(
                         os.path.basename(file_path), width, height
                     )
+                    
+                    # Passa i dati immagine ai controlli crop per superpixel
+                    view_mode = getattr(self.coordinate_viewer, 'view_mode', 'rgb')
+                    self.crop_controls.set_current_image_data(
+                        self.current_image_data, 'multispectral', view_mode
+                    )
                 
                 self.project_manager.mark_images_loaded()
                 self.log(f"🖼️ Immagine caricata: {os.path.basename(file_path)}")
@@ -477,6 +488,160 @@ class LabelingGUI:
         except Exception as e:
             messagebox.showerror("Errore Crop", f"Errore durante il crop:\n{e}")
             self.log(f"❌ Errore crop: {e}")
+    
+    def on_superpixel_generated(self, segments, overlay):
+        """
+        Callback chiamato quando vengono generati superpixel
+        
+        Args:
+            segments: Array segmentazione (H, W)
+            overlay: Array overlay RGBA (H, W, 4)
+        """
+        try:
+            self.log("✅ Superpixel generati, aggiornamento visualizzazione...")
+            
+            # Passa i superpixel al coordinate viewer per la visualizzazione
+            self.coordinate_viewer.set_superpixel_segments(segments, overlay)
+            
+            self.log(f"✅ Visualizzazione superpixel aggiornata - {len(np.unique(segments))} segmenti")
+            
+        except Exception as e:
+            self.log(f"❌ Errore aggiornamento superpixel: {e}")
+            messagebox.showerror("Errore Superpixel", f"Errore nella visualizzazione superpixel:\n{e}")
+    
+    def on_superpixel_mode_change(self, show_superpixel: bool):
+        """
+        Callback chiamato quando cambia la modalità crop/superpixel
+        
+        Args:
+            show_superpixel: True per mostrare superpixel, False per nasconderli
+        """
+        try:
+            # Verifica che tutti i componenti siano inizializzati
+            if not hasattr(self, 'crop_controls') or not hasattr(self, 'coordinate_viewer'):
+                return
+            
+            # Controlla la modalità corrente
+            current_mode = self.crop_controls.get_current_mode()
+            
+            if show_superpixel and current_mode == "superpixel":
+                # Modalità superpixel: mostra overlay e abilita selezione
+                self.coordinate_viewer.toggle_superpixel_display(True)
+                self.coordinate_viewer.set_superpixel_mode()  # Abilita selezione superpixel
+                self.log("🔸 Modalità Superpixel attivata")
+            else:
+                # Modalità crop: nascondi overlay  
+                self.coordinate_viewer.toggle_superpixel_display(False)
+                self.coordinate_viewer.set_crop_mode()  # Abilita crop mode
+                self.log("✂️ Modalità Crop attivata")
+                
+        except Exception as e:
+            if hasattr(self, 'log'):
+                self.log(f"❌ Errore cambio modalità: {e}")
+            else:
+                print(f"[DEBUG] Errore cambio modalità: {e}")
+    
+    def on_superpixel_selected(self, superpixel_id: int, x: int, y: int):
+        """
+        Callback chiamato quando viene selezionato un superpixel
+        
+        Args:
+            superpixel_id: ID del superpixel selezionato
+            x, y: Coordinate del click
+        """
+        try:
+            self.log(f"🔸 Superpixel selezionato: ID {superpixel_id} alle coordinate ({x}, {y})")
+            
+            # Ottieni bounds del superpixel per calcolare crop con padding
+            bounds = self.coordinate_viewer.get_selected_superpixel_bounds()
+            
+            if bounds:
+                min_x, min_y, max_x, max_y = bounds
+                self.log(f"📐 Bounds superpixel: ({min_x}, {min_y}) -> ({max_x}, {max_y})")
+                
+                # Genera crop del superpixel
+                self.crop_selected_superpixel(superpixel_id, bounds)
+            else:
+                self.log("❌ Impossibile calcolare bounds del superpixel")
+                
+        except Exception as e:
+            self.log(f"❌ Errore gestione selezione superpixel: {e}")
+    
+    def crop_selected_superpixel(self, superpixel_id: int, bounds: Tuple[int, int, int, int]):
+        """
+        Crea crop del superpixel selezionato con padding
+        
+        Args:
+            superpixel_id: ID del superpixel
+            bounds: Tuple (min_x, min_y, max_x, max_y)
+        """
+        try:
+            # Verifica che ci sia un progetto attivo
+            if not self.current_project_path:
+                self.log("❌ Nessun progetto attivo")
+                messagebox.showerror("Errore", "Nessun progetto attivo. Crea o carica un progetto prima di salvare.")
+                return
+            
+            # Verifica che ci siano dati immagine
+            if self.current_image_data is None:
+                self.log("❌ Nessuna immagine caricata")
+                messagebox.showerror("Errore", "Nessuna immagine caricata.")
+                return
+            
+            min_x, min_y, max_x, max_y = bounds
+            
+            # Calcola dimensioni superpixel
+            sp_width = max_x - min_x + 1
+            sp_height = max_y - min_y + 1
+            
+            # Calcola padding (10% delle dimensioni o minimo 5 pixel)
+            padding_x = max(5, int(sp_width * 0.1))
+            padding_y = max(5, int(sp_height * 0.1))
+            
+            # Calcola centro del superpixel
+            center_x = (min_x + max_x) // 2
+            center_y = (min_y + max_y) // 2
+            
+            # Calcola dimensioni crop quadrato con padding
+            crop_dimension = max(sp_width + 2 * padding_x, sp_height + 2 * padding_y)
+            
+            # Assicurati che sia almeno 32x32
+            crop_dimension = max(crop_dimension, 32)
+            
+            self.log(f"✂️ Generazione crop superpixel: {crop_dimension}x{crop_dimension}px centrato in ({center_x}, {center_y})")
+            
+            # Crea nome file e percorso
+            filename = f"superpixel_{superpixel_id}_{center_x}_{center_y}_{crop_dimension}x{crop_dimension}.tif"
+            crops_dir = os.path.join(self.current_project_path, "crops")
+            
+            # Assicurati che la cartella crops esista
+            os.makedirs(crops_dir, exist_ok=True)
+            
+            output_path = os.path.join(crops_dir, filename)
+            
+            self.log(f"📁 Salvataggio in: {output_path}")
+            
+            # Chiama il sistema di crop esistente
+            success = self.image_cropper.crop_multispectral_image(
+                self.current_image_data,
+                center_x, center_y,
+                crop_dimension,
+                output_path,
+                preserve_bands=True  # Mantieni tutte le bande per multispettrali
+            )
+            
+            if success:
+                self.log(f"✅ Crop superpixel salvato: {filename}")
+                messagebox.showinfo("Successo", f"Crop superpixel salvato:\n{filename}")
+            else:
+                self.log("❌ Errore salvataggio crop superpixel")
+                messagebox.showerror("Errore", "Impossibile salvare il crop del superpixel")
+                
+        except Exception as e:
+            self.log(f"❌ Errore crop superpixel: {e}")
+            messagebox.showerror("Errore Crop Superpixel", f"Errore durante il crop:\n{e}")
+            import traceback
+            traceback.print_exc()
     
     def log(self, message):
         """Aggiunge messaggio al log"""

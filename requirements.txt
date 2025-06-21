@@ -9,6 +9,9 @@ tifffile>=2021.11.2
 # Supporto compressione TIFF
 imagecodecs>=2021.11.20
 
+# Algoritmi superpixel
+scikit-image>=0.19.0
+
 # GUI (tkinter è incluso con Python)
 # tkinter - incluso nella distribuzione standard Python
 

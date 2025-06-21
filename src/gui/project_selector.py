@@ -131,7 +131,7 @@ class ProjectSelectorDialog:
         
         self.load_button = ttk.Button(
             button_frame,
-            text="Carica Progetto",
+            text="Seleziona",
             command=self.load_project,
             state="disabled"
         )

@@ -46,6 +46,21 @@ class CoordinateViewer:
         self.crop_preview = None  # Riferimento al rettangolo di anteprima crop
         self.crop_size = 64  # Dimensione crop di default
         
+        # Modalità di interazione
+        self.current_mode = "view"  # "view" o "crop"
+        
+        # Superpixel
+        self.superpixel_segments = None  # Array segmentazione (H, W)
+        self.superpixel_overlay = None   # Overlay RGBA (H, W, 4)
+        self.superpixel_overlay_pil = None  # PIL Image overlay per cache
+        self.superpixel_canvas_items = []  # Lista ID elementi canvas superpixel
+        self.show_superpixel = False     # Flag per mostrare/nascondere superpixel
+        
+        # Selezione superpixel
+        self.selected_superpixel_id = None  # ID del superpixel selezionato
+        self.superpixel_highlight_items = []  # Lista ID elementi canvas per evidenziazione
+        self.on_superpixel_selected = None   # Callback per selezione superpixel
+        
         # Nomi bande MicaSense
         self.band_names = [
             "Banda 1 - Blue (475nm)",
@@ -120,14 +135,6 @@ class CoordinateViewer:
         self.band_label.pack(side="left", padx=5)
         ttk.Button(self.band_frame, text="▶", command=self.next_band, width=3).pack(side="left")
         
-        # Info coordinate
-        coord_frame = ttk.LabelFrame(controls_frame, text="Coordinate Selezionate", padding=5)
-        coord_frame.pack(side="left", padx=(0, 10))
-        
-        self.coord_label = ttk.Label(coord_frame, text="Nessuna selezione", foreground="gray")
-        self.coord_label.pack()
-        
-        ttk.Button(coord_frame, text="🗑️ Pulisci", command=self.clear_coordinates).pack(pady=(2, 0))
 
         # Controlli zoom
         zoom_frame = ttk.LabelFrame(controls_frame, text="Zoom", padding=5)
@@ -138,12 +145,16 @@ class CoordinateViewer:
         self.zoom_label.pack(side="left", padx=5)
         ttk.Button(zoom_frame, text="+", command=self.zoom_in, width=3).pack(side="left")
 
-        # Bottoni azione
-        action_frame = ttk.Frame(controls_frame)
-        action_frame.pack(side="right")
+        # Indicatore modalità e coordinate
+        status_frame = ttk.LabelFrame(controls_frame, text="Stato", padding=5)
+        status_frame.pack(side="left", padx=(0, 10))
+        
+        self.mode_indicator = ttk.Label(status_frame, text="Modalità: Visualizzazione", foreground="blue")
+        self.mode_indicator.pack(pady=2)
+        
+        self.coord_label = ttk.Label(status_frame, text="Nessuna selezione", foreground="gray")
+        self.coord_label.pack(pady=2)
 
-        ttk.Button(action_frame, text="📂 Carica", command=self.load_image_dialog).pack(side="left", padx=2)
-        ttk.Button(action_frame, text="📊 Info", command=self.show_image_info).pack(side="left", padx=2)
         
         # Area immagine principale
         self.setup_image_area()
@@ -439,15 +450,23 @@ class CoordinateViewer:
         if (0 <= img_x < self.bands_data.shape[2] and
             0 <= img_y < self.bands_data.shape[1]):
 
-            self.selected_coordinates = (img_x, img_y)
-            self.update_coordinate_display()
-            self.draw_click_marker(canvas_x, canvas_y)
-            self.draw_crop_preview(canvas_x, canvas_y)
-            self.generate_crop_preview()
+            # Solo in modalità crop esegui azioni di selezione coordinate
+            if self.current_mode == "crop":
+                self.selected_coordinates = (img_x, img_y)
+                self.update_coordinate_display()
+                self.draw_click_marker(canvas_x, canvas_y)
+                self.draw_crop_preview(canvas_x, canvas_y)
+                self.generate_crop_preview()
 
-            # Notifica callback
-            if self.on_coordinate_click:
-                self.on_coordinate_click(img_x, img_y)
+                # Notifica callback
+                if self.on_coordinate_click:
+                    self.on_coordinate_click(img_x, img_y)
+            elif self.current_mode == "superpixel":
+                # Modalità superpixel: seleziona superpixel
+                self.select_superpixel_at_coordinate(img_x, img_y)
+            else:
+                # In modalità view, mostra solo le coordinate senza selezionarle
+                self._show_hover_coordinates(img_x, img_y)
     
     def draw_click_marker(self, canvas_x: float, canvas_y: float):
         """Disegna un marker nel punto cliccato"""
@@ -476,8 +495,8 @@ class CoordinateViewer:
         if self.selected_coordinates:
             x, y = self.selected_coordinates
             self.coord_label.config(
-                text=f"X: {x}, Y: {y}", 
-                foreground="blue"
+                text=f"Selezionate: X={x}, Y={y}", 
+                foreground="green"
             )
         else:
             self.coord_label.config(
@@ -506,6 +525,44 @@ class CoordinateViewer:
     def get_selected_coordinates(self) -> Optional[Tuple[int, int]]:
         """Restituisce le coordinate selezionate"""
         return self.selected_coordinates
+    
+    def set_crop_mode(self):
+        """Imposta la modalità crop per selezione coordinate"""
+        self.current_mode = "crop"
+        self.mode_indicator.config(text="Modalità: Crop", foreground="green")
+        # Cambia il cursore per indicare modalità crop
+        self.canvas.config(cursor="crosshair")
+    
+    def set_view_mode(self):
+        """Imposta la modalità visualizzazione"""
+        self.current_mode = "view"
+        self.mode_indicator.config(text="Modalità: Visualizzazione", foreground="blue")
+        # Ripristina cursore normale
+        self.canvas.config(cursor="")
+        # Pulisci coordinate e marker quando si passa a modalità view
+        self.clear_coordinates()
+    
+    def get_current_mode(self) -> str:
+        """Restituisce la modalità corrente"""
+        return self.current_mode
+    
+    def _show_hover_coordinates(self, x: int, y: int):
+        """Mostra temporaneamente le coordinate durante l'hover in modalità view"""
+        # Aggiorna solo l'etichetta delle coordinate senza selezionarle
+        self.coord_label.config(
+            text=f"Coordinate: X={x}, Y={y}", 
+            foreground="gray"
+        )
+        
+        # Riprogramma il reset delle coordinate dopo 2 secondi
+        if hasattr(self, '_hover_reset_job'):
+            self.parent.after_cancel(self._hover_reset_job)
+        
+        def reset_coord_display():
+            if self.current_mode == "view" and not self.selected_coordinates:
+                self.coord_label.config(text="Nessuna selezione", foreground="gray")
+        
+        self._hover_reset_job = self.parent.after(2000, reset_coord_display)
 
     def set_crop_size(self, crop_size: int):
         """Imposta la dimensione del crop per l'anteprima"""
@@ -724,6 +781,10 @@ class CoordinateViewer:
             # Rigenera anteprima crop se coordinate selezionate
             if self.selected_coordinates:
                 self.generate_crop_preview()
+            
+            # Rigenera overlay superpixel se attivo
+            if self.show_superpixel and self.superpixel_overlay is not None:
+                self.draw_superpixel_overlay()
 
         except Exception as e:
             messagebox.showerror("Errore Visualizzazione", f"Errore nella visualizzazione:\n{e}")
@@ -931,3 +992,283 @@ class CoordinateViewer:
             info += f"Media: {band_data.mean():.2f}\n"
 
         messagebox.showinfo("Informazioni Immagine", info)
+    
+    def set_superpixel_segments(self, segments: np.ndarray, overlay: np.ndarray):
+        """
+        Imposta la segmentazione superpixel e l'overlay
+        
+        Args:
+            segments: Array segmentazione (H, W)
+            overlay: Array overlay RGBA (H, W, 4)
+        """
+        self.superpixel_segments = segments
+        self.superpixel_overlay = overlay
+        
+        # Crea PIL Image con alpha 0.5 per overlay efficiente
+        self._create_superpixel_overlay_pil()
+        
+        self.show_superpixel = True
+        
+        # Aggiorna display con superpixel
+        self.draw_superpixel_overlay()
+    
+    def _create_superpixel_overlay_pil(self):
+        """Crea PIL Image overlay con alpha per rendering efficiente"""
+        if self.superpixel_overlay is None:
+            return
+        
+        try:
+            # Converti overlay in PIL Image
+            overlay_array = self.superpixel_overlay.copy()
+            
+            # Imposta alpha a 127 (50% trasparenza) dove ci sono bordi
+            overlay_array[:, :, 3] = np.where(overlay_array[:, :, 3] > 0, 127, 0)
+            
+            # Crea PIL Image
+            self.superpixel_overlay_pil = Image.fromarray(overlay_array, 'RGBA')
+            
+        except Exception as e:
+            print(f"Errore creazione overlay PIL: {e}")
+            self.superpixel_overlay_pil = None
+    
+    def draw_superpixel_overlay(self):
+        """Disegna l'overlay superpixel sul canvas usando PIL image pre-generata"""
+        if not self.show_superpixel or self.superpixel_overlay_pil is None:
+            return
+        
+        try:
+            # Pulisci overlay precedente
+            self.clear_superpixel_overlay()
+            
+            # Usa PIL image pre-generata per efficienza
+            pil_overlay = self.superpixel_overlay_pil
+            
+            # Calcola dimensioni in base al zoom corrente e alle dimensioni originali
+            if hasattr(self, 'bands_data') and self.bands_data is not None:
+                # Dimensioni originali dell'immagine
+                orig_height, orig_width = self.bands_data.shape[1], self.bands_data.shape[2]
+                
+                # Applica lo stesso scale_factor usato per l'immagine principale
+                if hasattr(self, 'scale_factor') and self.scale_factor > 0:
+                    # Calcola dimensioni scalate
+                    scaled_width = int(orig_width * self.scale_factor)
+                    scaled_height = int(orig_height * self.scale_factor)
+                    
+                    # Ridimensiona overlay alle stesse dimensioni dell'immagine visualizzata
+                    pil_overlay = pil_overlay.resize((scaled_width, scaled_height), Image.NEAREST)
+                    
+                    # Converti per tkinter
+                    tk_overlay = ImageTk.PhotoImage(pil_overlay)
+                    
+                    # Disegna sul canvas nella stessa posizione dell'immagine principale
+                    if hasattr(self, 'canvas') and self.canvas:
+                        x, y = 10, 10  # Stesso offset dell'immagine principale
+                        item_id = self.canvas.create_image(x, y, anchor='nw', image=tk_overlay)
+                        
+                        # Salva riferimento per evitare garbage collection
+                        self.superpixel_canvas_items.append(item_id)
+                        
+                        # Salva riferimento all'immagine
+                        if not hasattr(self, '_superpixel_photo_refs'):
+                            self._superpixel_photo_refs = []
+                        self._superpixel_photo_refs.append(tk_overlay)
+                    
+        except Exception as e:
+            print(f"Errore disegno overlay superpixel: {e}")
+    
+    def clear_superpixel_overlay(self):
+        """Pulisce l'overlay superpixel dal canvas"""
+        if hasattr(self, 'canvas') and self.canvas:
+            for item_id in self.superpixel_canvas_items:
+                try:
+                    self.canvas.delete(item_id)
+                except:
+                    pass
+        
+        self.superpixel_canvas_items.clear()
+        
+        # Pulisci riferimenti foto
+        if hasattr(self, '_superpixel_photo_refs'):
+            self._superpixel_photo_refs.clear()
+    
+    def toggle_superpixel_display(self, show: bool = None):
+        """
+        Mostra/nasconde la visualizzazione superpixel
+        
+        Args:
+            show: True per mostrare, False per nascondere, None per toggle
+        """
+        if show is None:
+            self.show_superpixel = not self.show_superpixel
+        else:
+            self.show_superpixel = show
+        
+        if self.show_superpixel:
+            self.draw_superpixel_overlay()
+        else:
+            self.clear_superpixel_overlay()
+    
+    def clear_superpixel_data(self):
+        """Pulisce completamente i dati superpixel"""
+        self.clear_superpixel_overlay()
+        self.clear_superpixel_selection()
+        self.superpixel_segments = None
+        self.superpixel_overlay = None
+        self.superpixel_overlay_pil = None
+        self.show_superpixel = False
+    
+    def get_superpixel_at_coordinate(self, x: int, y: int) -> Optional[int]:
+        """
+        Ottiene l'ID del superpixel alle coordinate specificate
+        
+        Args:
+            x, y: Coordinate nell'immagine originale
+            
+        Returns:
+            ID superpixel o None
+        """
+        if self.superpixel_segments is None:
+            return None
+        
+        try:
+            from utils.superpixel_utils import SuperpixelGenerator
+            return SuperpixelGenerator.get_superpixel_at_coordinate(
+                self.superpixel_segments, x, y
+            )
+        except ImportError:
+            # Fallback manuale
+            h, w = self.superpixel_segments.shape
+            if 0 <= y < h and 0 <= x < w:
+                return int(self.superpixel_segments[y, x])
+            return None
+        except Exception as e:
+            print(f"Errore accesso superpixel: {e}")
+            return None
+    
+    def set_superpixel_mode(self):
+        """Imposta modalità superpixel per selezione"""
+        self.current_mode = "superpixel"
+    
+    def select_superpixel_at_coordinate(self, x: int, y: int):
+        """
+        Seleziona il superpixel alle coordinate specificate
+        
+        Args:
+            x, y: Coordinate nell'immagine originale
+        """
+        if self.superpixel_segments is None:
+            return
+        
+        try:
+            # Ottieni ID del superpixel
+            superpixel_id = self.get_superpixel_at_coordinate(x, y)
+            
+            if superpixel_id is not None:
+                # Pulisci selezione precedente
+                self.clear_superpixel_selection()
+                
+                # Imposta nuovo superpixel selezionato
+                self.selected_superpixel_id = superpixel_id
+                
+                # Evidenzia superpixel
+                self.highlight_selected_superpixel()
+                
+                # Notifica callback se presente
+                if self.on_superpixel_selected:
+                    self.on_superpixel_selected(superpixel_id, x, y)
+                    
+                print(f"[DEBUG] Superpixel selezionato: ID {superpixel_id} alle coordinate ({x}, {y})")
+        
+        except Exception as e:
+            print(f"Errore selezione superpixel: {e}")
+    
+    def highlight_selected_superpixel(self):
+        """Evidenzia il superpixel selezionato"""
+        if self.selected_superpixel_id is None or self.superpixel_segments is None:
+            return
+        
+        try:
+            # Crea maschera per il superpixel selezionato
+            mask = (self.superpixel_segments == self.selected_superpixel_id)
+            
+            # Crea overlay di evidenziazione
+            highlight_overlay = np.zeros((*self.superpixel_segments.shape, 4), dtype=np.uint8)
+            highlight_overlay[mask] = [255, 0, 0, 128]  # Rosso semi-trasparente
+            
+            # Converti in PIL Image
+            highlight_pil = Image.fromarray(highlight_overlay, 'RGBA')
+            
+            # Ridimensiona in base al zoom corrente
+            if hasattr(self, 'bands_data') and self.bands_data is not None:
+                orig_height, orig_width = self.bands_data.shape[1], self.bands_data.shape[2]
+                
+                if hasattr(self, 'scale_factor') and self.scale_factor > 0:
+                    scaled_width = int(orig_width * self.scale_factor)
+                    scaled_height = int(orig_height * self.scale_factor)
+                    highlight_pil = highlight_pil.resize((scaled_width, scaled_height), Image.NEAREST)
+            
+            # Converti per tkinter
+            tk_highlight = ImageTk.PhotoImage(highlight_pil)
+            
+            # Disegna sul canvas
+            if hasattr(self, 'canvas') and self.canvas:
+                x, y = 10, 10  # Stesso offset dell'immagine principale
+                item_id = self.canvas.create_image(x, y, anchor='nw', image=tk_highlight)
+                
+                # Salva riferimento per cleanup
+                self.superpixel_highlight_items.append(item_id)
+                
+                # Salva riferimento all'immagine
+                if not hasattr(self, '_highlight_photo_refs'):
+                    self._highlight_photo_refs = []
+                self._highlight_photo_refs.append(tk_highlight)
+        
+        except Exception as e:
+            print(f"Errore evidenziazione superpixel: {e}")
+    
+    def clear_superpixel_selection(self):
+        """Pulisce la selezione superpixel corrente"""
+        # Pulisci evidenziazione dal canvas
+        if hasattr(self, 'canvas') and self.canvas:
+            for item_id in self.superpixel_highlight_items:
+                try:
+                    self.canvas.delete(item_id)
+                except:
+                    pass
+        
+        self.superpixel_highlight_items.clear()
+        
+        # Pulisci riferimenti foto
+        if hasattr(self, '_highlight_photo_refs'):
+            self._highlight_photo_refs.clear()
+        
+        # Reset selezione
+        self.selected_superpixel_id = None
+    
+    def get_selected_superpixel_bounds(self) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Restituisce i bounds del superpixel selezionato
+        
+        Returns:
+            Tuple (min_x, min_y, max_x, max_y) o None se nessun superpixel selezionato
+        """
+        if self.selected_superpixel_id is None or self.superpixel_segments is None:
+            return None
+        
+        try:
+            # Trova tutti i pixel del superpixel selezionato
+            mask = (self.superpixel_segments == self.selected_superpixel_id)
+            coords = np.where(mask)
+            
+            if len(coords[0]) == 0:
+                return None
+            
+            # Calcola bounds
+            min_y, max_y = coords[0].min(), coords[0].max()
+            min_x, max_x = coords[1].min(), coords[1].max()
+            
+            return (min_x, min_y, max_x, max_y)
+        
+        except Exception as e:
+            print(f"Errore calcolo bounds superpixel: {e}")
+            return None
