@@ -30,6 +30,7 @@ class CoordinateViewer:
         self.parent = parent
         self.on_coordinate_click = on_coordinate_click
         self.on_save_callback = on_save_callback
+        self.on_view_mode_change = None  # Callback per cambio modalità visualizzazione
         
         # Dati immagine
         self.bands_data = None
@@ -351,12 +352,17 @@ class CoordinateViewer:
     def on_mode_change(self, event=None):
         """Gestisce cambio modalità dal dropdown"""
         selected_text = self.mode_var.get()
+        previous_mode = self.view_mode
         
         # Trova la chiave corrispondente
         for key, value in self.view_modes.items():
             if value == selected_text:
                 self.view_mode = key
                 break
+        
+        # Notifica callback del cambio modalità
+        if self.on_view_mode_change and previous_mode != self.view_mode:
+            self.on_view_mode_change(self.view_mode, previous_mode)
         
         self.update_band_controls_visibility()
         self.update_display()

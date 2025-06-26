@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import shutil
+from utils.session_logger import SessionLogger
 
 
 class ProjectManager:
@@ -40,6 +41,9 @@ class ProjectManager:
         # Flag per tracking stato
         self.images_loaded = False
         self.crops_saved = False
+        
+        # Session logger
+        self.session_logger = None
     
     def create_project(self, project_name: Optional[str] = None, 
                       source_paths: List[str] = None) -> str:
@@ -117,6 +121,9 @@ class ProjectManager:
         # Reset flag
         self.images_loaded = False
         self.crops_saved = False
+        
+        # Inizializza session logger per il nuovo progetto
+        self._init_session_logger()
         
         return str(project_path)
     
@@ -221,6 +228,12 @@ class ProjectManager:
         self.project_metadata["statistics"]["total_crops"] += 1
         self.project_metadata["last_modified"] = datetime.now().isoformat()
         
+        # Log creazione crop
+        if self.session_logger:
+            self.session_logger.log_crop_created(
+                crop_path, original_image, coordinates, crop_size, view_mode
+            )
+        
         # Salva metadata aggiornati
         self._save_metadata()
     
@@ -240,9 +253,13 @@ class ProjectManager:
         """Restituisce informazioni sui file sorgente"""
         return self.project_metadata.get("source_info", {})
     
-    def mark_images_loaded(self):
+    def mark_images_loaded(self, file_path: str = None, image_shape: tuple = None, bands: int = None):
         """Marca che sono state caricate immagini"""
         self.images_loaded = True
+        
+        # Log caricamento immagine
+        if self.session_logger and file_path:
+            self.session_logger.log_image_loaded(file_path, image_shape, bands)
     
     def mark_crop_saved(self):
         """Marca che è stato salvato un crop"""
@@ -376,6 +393,9 @@ class ProjectManager:
             self.images_loaded = False
             self.crops_saved = len(metadata.get("crops", [])) > 0
 
+            # Inizializza session logger per il progetto caricato
+            self._init_session_logger()
+
             print(f"Progetto caricato: {self.current_project}")
             return True
 
@@ -450,3 +470,46 @@ class ProjectManager:
     def has_active_project(self) -> bool:
         """Verifica se c'è un progetto attivo"""
         return self.current_project is not None and self.current_project_path is not None
+    
+    def _init_session_logger(self):
+        """Inizializza il session logger per il progetto corrente"""
+        if self.current_project_path:
+            # Termina sessione precedente se esistente
+            if self.session_logger:
+                self.session_logger.end_session()
+            
+            # Crea nuovo session logger
+            self.session_logger = SessionLogger(self.current_project_path)
+            
+            # Log azione progetto
+            self.session_logger.log_project_action("project_opened", {
+                "project_name": self.current_project,
+                "project_path": self.current_project_path
+            })
+    
+    def log_coordinate_selected(self, coordinates: tuple, image_file: str = None):
+        """Log selezione coordinate"""
+        if self.session_logger:
+            self.session_logger.log_coordinate_selected(coordinates, image_file)
+    
+    def log_view_mode_changed(self, new_mode: str, previous_mode: str = None):
+        """Log cambio modalità visualizzazione"""
+        if self.session_logger:
+            self.session_logger.log_view_mode_changed(new_mode, previous_mode)
+    
+    def log_error(self, error_type: str, error_message: str, context: dict = None):
+        """Log errori"""
+        if self.session_logger:
+            self.session_logger.log_error(error_type, error_message, context)
+    
+    def end_session(self):
+        """Termina la sessione corrente"""
+        if self.session_logger:
+            self.session_logger.end_session()
+            self.session_logger = None
+    
+    def get_session_summary(self) -> dict:
+        """Restituisce riassunto della sessione corrente"""
+        if self.session_logger:
+            return self.session_logger.get_session_summary()
+        return {}

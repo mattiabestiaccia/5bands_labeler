@@ -86,6 +86,7 @@ class LabelingGUI:
         # Visualizzatore con coordinate
         self.coordinate_viewer = CoordinateViewer(right_frame, self.on_coordinate_click)
         self.coordinate_viewer.on_superpixel_selected = self.on_superpixel_selected
+        self.coordinate_viewer.on_view_mode_change = self.on_view_mode_change
         
         # Barra di stato
         self.setup_status_bar()
@@ -208,7 +209,10 @@ class LabelingGUI:
                             self.current_image_data, 'multispectral', view_mode
                         )
                     
-                    self.project_manager.mark_images_loaded()
+                    # Marca immagine caricata con informazioni per il log
+                    image_shape = self.current_image_data.shape if self.current_image_data is not None else None
+                    bands = self.current_image_data.shape[0] if self.current_image_data is not None else None
+                    self.project_manager.mark_images_loaded(first_image_path, image_shape, bands)
                     self.log(f"📷 Immagine caricata: {os.path.basename(first_image_path)}")
                 else:
                     self.log(f"❌ Impossibile caricare: {os.path.basename(first_image_path)}")
@@ -438,6 +442,9 @@ class LabelingGUI:
         """Gestisce click per coordinate dal visualizzatore"""
         self.log(f"📍 Coordinate selezionate: X={x}, Y={y}")
 
+        # Log selezione coordinate
+        self.project_manager.log_coordinate_selected((x, y), self.current_image_file)
+
         # Aggiorna controlli crop
         self.crop_controls.set_coordinates(x, y)
 
@@ -445,6 +452,13 @@ class LabelingGUI:
         """Gestisce cambio dimensione crop"""
         # Aggiorna dimensione crop nel visualizzatore per l'anteprima
         self.coordinate_viewer.set_crop_size(crop_size)
+    
+    def on_view_mode_change(self, new_mode: str, previous_mode: str = None):
+        """Gestisce cambio modalità visualizzazione"""
+        self.log(f"🔄 Modalità: {previous_mode} → {new_mode}")
+        
+        # Log cambio modalità
+        self.project_manager.log_view_mode_changed(new_mode, previous_mode)
     
     def on_crop_save(self, crop_size: int, coordinates: tuple, filename: str):
         """Gestisce salvataggio crop"""
@@ -683,6 +697,9 @@ Utilizzo:
 
     def on_closing(self):
         """Gestisce la chiusura dell'applicazione"""
+        # Termina sessione di logging
+        self.project_manager.end_session()
+        
         # Pulizia progetto vuoto
         if self.project_manager.current_project:
             self.project_manager.cleanup_empty_project()
